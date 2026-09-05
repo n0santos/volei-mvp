@@ -1,0 +1,12 @@
+{
+  "sessoes": 500,
+  "presentes_medio": 24.77,
+  "partidas_medio": 12,
+  "CV_medio_minutos": 0.173,
+  "SD_medio_partidas_por_jogador": 1.037,
+  "dif_score_media": 0.13,
+  "dif_score_max_media": 0.46,
+  "maior_espera_media": 1.54,
+  "sessoes_com_2_ou_mais_fora": 54.4,
+  "sessoes_com_3_partidas_seguidas_jogando": 11.6
+}

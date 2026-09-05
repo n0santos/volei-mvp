@@ -1,0 +1,9 @@
+.venv
+__pycache__
+*.egg-info
+.git
+.pytest_cache
+data
+volei.db
+.env
+tests

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vôlei MVP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="inner">
+    <div>
+      <h1>🏐 Vôlei</h1>
+      <div id="sessionName" class="muted">Nenhuma sessão</div>
+    </div>
+    <div class="actions">
+      <button id="togglePlayers">⚙ Jogadores</button>
+      <button id="newSession" class="primary">Nova sessão</button>
+    </div>
+  </div>
+</header>
+<div class="app">
+  <main>
+    <section id="setup" class="panel">
+      <h2>Jogadores cadastrados</h2>
+      <form id="playerForm" class="inline">
+        <input id="playerName" placeholder="Nome" required>
+        <input id="playerScore" type="number" min="0" max="100" value="70" placeholder="Score">
+        <select id="playerGender">
+          <option value="F">F</option>
+          <option value="M">M</option>
+          <option value="X">X</option>
+        </select>
+        <button class="primary">Adicionar</button>
+      </form>
+      <div id="masterPlayers" class="player-grid"></div>
+    </section>
+
+    <section id="sessionPanel" class="panel hidden">
+      <div class="section-head">
+        <div>
+          <h2>Presença</h2>
+          <div id="counts" class="muted"></div>
+        </div>
+        <div class="actions">
+          <button id="addOutside">+ Pessoa fora da lista</button>
+          <button id="generate" class="primary">Gerar próxima partida</button>
+        </div>
+      </div>
+      <div id="attendance" class="player-grid"></div>
+    </section>
+
+    <section id="matchPanel" class="panel hidden">
+      <div class="section-head">
+        <div>
+          <h2 id="matchTitle">Partida</h2>
+          <div id="balance" class="muted"></div>
+        </div>
+        <div class="actions">
+          <button id="startMatch" class="primary">▶ Iniciar</button>
+          <button id="finishMatch" class="danger hidden">⏹ Encerrar</button>
+          <button id="resetMatch">Refazer</button>
+        </div>
+      </div>
+      <div id="teams" class="teams"></div>
+      <div id="substitution" class="panel inner hidden"></div>
+    </section>
+  </main>
+
+  <div id="toast"></div>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
