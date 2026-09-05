@@ -2,7 +2,7 @@ import random
 from itertools import combinations
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
-from ..models import Attendance, Player
+from ..models import Attendance, Player, Match
 from .fairness import history
 
 
@@ -30,11 +30,19 @@ def select_players(db: DBSession, session_id: int, target: int = 12):
 
     hist = history(db, session_id)
 
-    # Players tied on fairness (same wait/playing history) are resolved by a
-    # random draw each time a match is generated - like the group's usual
-    # "adedonha" - rather than always favoring the same person (e.g. whoever
-    # arrived earliest).
+    # Before the first match, everyone is tied at zero wait/played/minutes -
+    # whoever checked in earliest gets the opening spots. Once matches start
+    # happening, ties are resolved by a random draw each time a match is
+    # generated instead - like the group's usual "adedonha" - rather than
+    # always favoring the same person (e.g. whoever arrived earliest).
+    is_first_match = not db.execute(
+        select(Match.id).where(Match.session_id == session_id, Match.status == "finished")
+    ).first()
+
     raffle = {p.id: random.random() for _, p in available}
+
+    def tiebreak(a, p):
+        return (a.arrival_order or 9999) * 0.01 if is_first_match else raffle[p.id]
 
     def priority(pair):
         a, p = pair
@@ -48,7 +56,7 @@ def select_players(db: DBSession, session_id: int, target: int = 12):
             -wait * 1000
             + played * 180
             + minutes * 0.25
-            + raffle[p.id]
+            + tiebreak(a, p)
         )
 
     ranked = sorted(available, key=priority)
@@ -83,7 +91,7 @@ def select_players(db: DBSession, session_id: int, target: int = 12):
             cost += h["playing_streak"] * 180
             cost -= h["outside_streak"] * 1000
             cost += h["minutes"] * 0.25
-            cost += raffle[p.id]
+            cost += tiebreak(a, p)
 
         # Penalize selecting too many people who just played.
         cost += sum(120 for _, p in combo if hist[p.id]["playing_streak"] >= 2)

@@ -5,6 +5,7 @@ __pycache__/
 build/
 .pytest_cache/
 volei.db
+volei.db.bak-*
 data/
 .env
 .DS_Store

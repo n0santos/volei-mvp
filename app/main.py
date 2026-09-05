@@ -270,7 +270,15 @@ async def generate_match(session_id: int, db: DBSession = Depends(get_db)):
     if len(chosen) < 2:
         raise HTTPException(400, "É preciso ter pelo menos 2 jogadores presentes")
 
-    a, b, diff = balance_teams(chosen)
+    last_match = db.execute(
+        select(Match).where(Match.session_id == session_id).order_by(Match.number.desc())
+    ).scalars().first()
+    previous_teams = {}
+    if last_match:
+        for mp in db.execute(select(MatchPlayer).where(MatchPlayer.match_id == last_match.id)).scalars():
+            previous_teams[mp.player_id] = mp.team
+
+    a, b, diff = balance_teams(chosen, previous_teams)
 
     last_num = db.execute(
         select(Match.number).where(Match.session_id == session_id)
