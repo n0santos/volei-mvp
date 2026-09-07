@@ -28,7 +28,7 @@ async function loadPlayers() {
     <div class="player">
       <div class="info">
         <div class="name">${esc(p.name)}</div>
-        <div class="muted">${p.score} pts · ${p.gender}</div>
+        <div class="muted">${p.gender}</div>
       </div>
     </div>
   `).join("");
