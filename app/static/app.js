@@ -118,6 +118,42 @@ async function setAttendance(id, status) {
   } catch(e) { toast(e.message); }
 }
 
+// While a match is only proposed or running it has not been counted yet, so
+// each player's streaks still describe the situation that got them picked.
+function pickReason(id) {
+  const p = (state.players || []).find(x => x.id === id);
+  if (!p) return null;
+  if (p.playing_streak >= 2)
+    return {text:`${p.playing_streak + 1}ª seguida — liberado por falta de gente`, alert:true};
+  if (p.outside_streak > 0)
+    return {text:`esperou ${p.outside_streak}`, alert:false};
+  if (p.playing_streak > 0)
+    return {text:"jogou a anterior", alert:false};
+  if (p.matches > 0)
+    return {text:`${p.matches} partidas`, alert:false};
+  return {text: p.arrival_order ? `chegou em ${p.arrival_order}º` : "ainda não jogou", alert:false};
+}
+
+function drawSummary(m) {
+  const onCourt = m.teams.A.concat(m.teams.B);
+  const present = (state.players || []).filter(p => p.status === "arrived").length;
+  if (!present) return "";
+  const repeated = onCourt.filter(p => {
+    const s = (state.players || []).find(x => x.id === p.id);
+    return s && s.playing_streak > 0;
+  }).length;
+  let line = `${present} presentes · ${onCourt.length} em quadra · ${present - onCourt.length} de fora`
+    + ` · ${repeated} repetiram da anterior`;
+  // Said up front, because "why is that person playing again?" is the question
+  // the draw always gets asked. Only the people on the bench can replace the
+  // ones on court, so any shortfall has to be covered by repeating someone.
+  const unavoidable = Math.max(0, onCourt.length - (present - onCourt.length));
+  if (unavoidable > 0) {
+    line += ` — com ${present} presentes, ${unavoidable} ${unavoidable === 1 ? "repetição é inevitável" : "repetições são inevitáveis"} na próxima`;
+  }
+  return line;
+}
+
 function renderMatch() {
   const m = state.current_match;
   if (!m) {
@@ -129,7 +165,8 @@ function renderMatch() {
   const a = m.teams.A, b = m.teams.B;
   const sa = a.reduce((x,p)=>x+p.score,0);
   const sb = b.reduce((x,p)=>x+p.score,0);
-  $("balance").textContent = `Time A: ${sa.toFixed(0)} · Time B: ${sb.toFixed(0)} · diferença: ${Math.abs(sa-sb).toFixed(0)}`;
+  $("balance").innerHTML = `Time A: ${sa.toFixed(0)} · Time B: ${sb.toFixed(0)} · diferença: ${Math.abs(sa-sb).toFixed(0)}`
+    + `<br><span class="muted">${esc(drawSummary(m))}</span>`;
 
   $("teams").innerHTML = ["A","B"].map(team => {
     const arr = m.teams[team];
@@ -137,12 +174,19 @@ function renderMatch() {
     return `
       <div class="team">
         <h3>Time ${team}</h3>
-        ${arr.map(p => `
+        ${arr.map(p => {
+          const why = pickReason(p.id);
+          return `
           <div class="member">
-            <span>${esc(p.name)} ${p.role === "substitute" ? '<span class="badge">sub</span>' : ''}</span>
+            <span>${esc(p.name)} ${p.role === "substitute" ? '<span class="badge">sub</span>' : ''}
+              ${why ? `<br><span class="${why.alert ? 'badge wait' : 'muted'}">${esc(why.text)}</span>` : ''}
+            </span>
             ${m.status === "running" && !p.exited ?
               `<button onclick="playerExit(${m.id},${p.id})">Saiu</button>` : ''}
-          </div>`).join("")}
+            ${m.status === "proposed" ?
+              `<button onclick="offerSwap(${m.id},${p.id})">Trocar</button>` : ''}
+          </div>`;
+        }).join("")}
         <div class="total">Total: ${total.toFixed(0)}</div>
       </div>`;
   }).join("");
@@ -150,6 +194,34 @@ function renderMatch() {
   $("startMatch").classList.toggle("hidden", m.status !== "proposed");
   $("finishMatch").classList.toggle("hidden", m.status !== "running");
   $("substitution").classList.add("hidden");
+}
+
+async function offerSwap(matchId, outId) {
+  try {
+    const leaving = (state.players || []).find(p => p.id === outId);
+    const candidates = await api(`/api/matches/${matchId}/substitutes`);
+    const box = $("substitution");
+    box.classList.remove("hidden");
+    box.innerHTML = `
+      <h3>Trocar ${esc(leaving ? leaving.name : "")}</h3>
+      <p class="muted">Quem entra no lugar, no mesmo time. Quem sair volta pra fila e entra na frente na próxima.</p>
+      ${candidates.length ? candidates.map(p => `
+        <button onclick="doSwap(${matchId},${outId},${p.id})" style="display:block;width:100%;text-align:left;margin:6px 0">
+          <strong>${esc(p.name)}</strong> · espera ${p.outside_streak} · ${p.matches} ${p.matches === 1 ? 'partida' : 'partidas'}
+        </button>
+      `).join("") : "<p>Ninguém disponível para entrar — quem já jogou duas seguidas não pode entrar numa troca.</p>"}
+      <button onclick="document.getElementById('substitution').classList.add('hidden')">Cancelar</button>`;
+  } catch(e) { toast(e.message); }
+}
+
+async function doSwap(matchId, outId, inId) {
+  try {
+    await api(`/api/matches/${matchId}/swap`, {
+      method:"POST", body:JSON.stringify({out_player_id:outId, in_player_id:inId})
+    });
+    $("substitution").classList.add("hidden");
+    await refresh();
+  } catch(e) { toast(e.message); }
 }
 
 async function playerExit(matchId, playerId) {
@@ -163,7 +235,7 @@ async function playerExit(matchId, playerId) {
       <p class="muted">Escolha quem entra. O sistema prioriza quem está esperando há mais tempo.</p>
       ${candidates.length ? candidates.map(p => `
         <button onclick="substitute(${matchId},${p.id})" style="display:block;width:100%;text-align:left;margin:6px 0">
-          <strong>${esc(p.name)}</strong> · espera ${p.outside_streak} · ${p.minutes} min jogados
+          <strong>${esc(p.name)}</strong> · espera ${p.outside_streak} · ${p.matches} ${p.matches === 1 ? 'partida' : 'partidas'}
         </button>
       `).join("") : "<p>Ninguém disponível para substituir.</p>"}`;
     await refresh();

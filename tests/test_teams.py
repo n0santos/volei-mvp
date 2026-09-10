@@ -24,33 +24,43 @@ def test_gender_adjustment_treats_men_as_stronger():
     assert diff == 0
 
 
-def test_preserves_teams_when_composition_barely_changes():
-    players = [p(str(i), 70) for i in range(12)]
-    a1, b1, _ = balance_teams(players)
-
-    previous_teams = {pl.id: "A" for pl in a1}
-    previous_teams.update({pl.id: "B" for pl in b1})
-
-    # One player from team A leaves, a newcomer with the same score joins.
-    outgoing = a1[0]
-    newcomer = p("newcomer", outgoing.score)
-    next_group = [pl for pl in players if pl.id != outgoing.id] + [newcomer]
-
-    a2, b2, diff2 = balance_teams(next_group, previous_teams)
-
-    ids = lambda players: {pl.id for pl in players}
-    assert ids(b2) == ids(b1), "team B had no reason to change but got reshuffled"
-    assert ids(a2) == ids(a1[1:]) | {newcomer.id}
-
-
-def test_falls_back_to_full_reshuffle_when_continuity_too_unbalanced():
-    # Deliberately construct a badly balanced "previous" assignment (every
-    # strong player on one side). If the roster is unchanged, blindly
-    # preserving it would keep a huge gap that a full reshuffle would fix.
+def test_evenly_splits_a_lopsided_group():
+    # Six strong players and six weak ones must not end up stacked on one side.
     strong = [p(f"s{i}", 95) for i in range(6)]
     weak = [p(f"w{i}", 45) for i in range(6)]
-    previous_teams = {pl.id: "A" for pl in strong}
-    previous_teams.update({pl.id: "B" for pl in weak})
 
-    a, b, diff = balance_teams(strong + weak, previous_teams)
+    a, b, diff = balance_teams(strong + weak)
     assert diff <= 10
+
+
+def doze_jogadores():
+    return [
+        p(f"P{i}", score, gender)
+        for i, (score, gender) in enumerate([
+            (90, "F"), (85, "M"), (80, "F"), (80, "M"), (75, "F"), (70, "M"),
+            (70, "F"), (65, "M"), (60, "F"), (60, "M"), (55, "F"), (50, "M"),
+        ])
+    ]
+
+
+def test_same_group_does_not_always_split_the_same_way():
+    # When the same twelve come back to the court, always computing the single
+    # best split put them against exactly the same faces every time. Any split
+    # of near-equal balance does the job, so the choice is drawn instead.
+    jogadores = doze_jogadores()
+
+    seen = set()
+    for _ in range(30):
+        a, _b, _diff = balance_teams(jogadores)
+        seen.add(frozenset(x.name for x in a))
+
+    assert len(seen) > 1, "a mesma divisão saiu 30 vezes seguidas"
+
+
+def test_mixing_keeps_the_teams_balanced():
+    jogadores = doze_jogadores()
+
+    for _ in range(30):
+        a, b, diff = balance_teams(jogadores)
+        assert len(a) == len(b) == 6
+        assert diff <= 25, f"times ficaram desequilibrados: diferença {diff}"

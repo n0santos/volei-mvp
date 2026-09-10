@@ -1,3 +1,4 @@
+import random
 from itertools import combinations
 
 # Scores are assigned comparing players within their own gender group, not on
@@ -6,9 +7,11 @@ from itertools import combinations
 # this back only when comparing skill across genders for team balance.
 MALE_ADJUSTMENT = 10
 
-# How much worse a continuity-preserving split is allowed to be than the
-# best possible full reshuffle before we give up on preserving teams.
-CONTINUITY_TOLERANCE = 20
+# How much worse than the best possible split a split may be and still be drawn
+# from. Dozens of splits usually tie for practically the same balance, and
+# always taking the first one put the same people against each other every
+# single match of the night.
+MIX_TOLERANCE = 10
 
 
 def effective_score(p):
@@ -41,7 +44,7 @@ def _split_cost(a, b):
 def _best_full_split(players):
     a_size = len(players) // 2
 
-    best = None
+    splits = []
     best_cost = float("inf")
 
     for idxs in combinations(range(len(players)), a_size):
@@ -54,59 +57,18 @@ def _best_full_split(players):
             continue
 
         cost = _split_cost(a, b)
+        splits.append((cost, a, b))
         if cost < best_cost:
             best_cost = cost
-            best = (a, b)
 
-    return best[0], best[1], best_cost
-
-
-def _continuity_split(players, previous_teams):
-    """Try to keep whoever was on team A/B last match on the same team,
-    only deciding where newcomers go. Returns None when that isn't even
-    possible without bumping someone who stayed (e.g. a team shrank)."""
-    a_size = len(players) // 2
-    b_size = len(players) - a_size
-
-    kept_a = [p for p in players if previous_teams.get(p.id) == "A"]
-    kept_b = [p for p in players if previous_teams.get(p.id) == "B"]
-    newcomers = [p for p in players if p.id not in previous_teams]
-
-    if len(kept_a) > a_size or len(kept_b) > b_size:
-        return None
-
-    a_needed = a_size - len(kept_a)
-    b_needed = b_size - len(kept_b)
-    if a_needed + b_needed != len(newcomers):
-        return None
-
-    if not newcomers:
-        return kept_a, kept_b, _split_cost(kept_a, kept_b)
-
-    best = None
-    best_cost = float("inf")
-    for combo in combinations(newcomers, a_needed):
-        a = kept_a + list(combo)
-        b = kept_b + [p for p in newcomers if p not in combo]
-        cost = _split_cost(a, b)
-        if cost < best_cost:
-            best_cost = cost
-            best = (a, b)
-
-    return best[0], best[1], best_cost
+    close_enough = [s for s in splits if s[0] <= best_cost + MIX_TOLERANCE]
+    cost, a, b = random.choice(close_enough)
+    return a, b, cost
 
 
-def balance_teams(players, previous_teams=None):
+def balance_teams(players):
     if len(players) < 2:
         return players, [], 0.0
 
-    full_a, full_b, full_cost = _best_full_split(players)
-
-    if previous_teams:
-        continuity = _continuity_split(players, previous_teams)
-        if continuity is not None:
-            cont_a, cont_b, cont_cost = continuity
-            if cont_cost <= full_cost + CONTINUITY_TOLERANCE:
-                return cont_a, cont_b, abs(team_score(cont_a) - team_score(cont_b))
-
-    return full_a, full_b, abs(team_score(full_a) - team_score(full_b))
+    a, b, _cost = _best_full_split(players)
+    return a, b, abs(team_score(a) - team_score(b))

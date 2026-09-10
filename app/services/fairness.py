@@ -15,6 +15,8 @@ def history(db: DBSession, session_id: int):
     h = defaultdict(lambda: {
         "matches": 0,
         "minutes": 0.0,
+        "missed": 0,
+        "share": 0.0,
         "outside_streak": 0,
         "playing_streak": 0,
         "last_match": 0,
@@ -51,9 +53,12 @@ def history(db: DBSession, session_id: int):
         .where(Match.session_id == session_id)
     ).all()
 
+    # Substitutes are left out on purpose: coming off the bench mid-match is an
+    # emergency favour, not the person's turn on the court, so it neither uses
+    # up a turn nor counts toward playing too many matches in a row.
     participation = defaultdict(set)
     for mp, match in all_mps:
-        if match.status == "finished":
+        if match.status == "finished" and mp.role == "starter":
             participation[match.number].add(mp.player_id)
 
     # Every player who has ever checked in this session needs a streak,
@@ -97,5 +102,12 @@ def history(db: DBSession, session_id: int):
         item = h[pid]
         item["outside_streak"] = trailing_out
         item["playing_streak"] = trailing_in
+        # How often this person watched a match they were here for. Counting
+        # matches *played* instead would read a late arrival as someone owed a
+        # turn, when they simply were not in the gym yet.
+        item["missed"] = sum(1 for m in relevant if pid not in participation[m.number])
+        # Share of the matches they were actually here for. A ratio rather than
+        # a running total, so arriving late neither earns nor costs a turn.
+        item["share"] = (len(relevant) - item["missed"]) / len(relevant) if relevant else 0.0
 
     return h

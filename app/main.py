@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -10,8 +11,8 @@ from sqlalchemy.orm import Session as DBSession
 
 from .database import Base, engine, get_db, SessionLocal
 from .models import Player, Session as GameSession, Attendance, Match, MatchPlayer, Event
-from .schemas import PlayerCreate, SessionCreate, AttendanceUpdate, SubstituteRequest
-from .services.selection import select_players, eligible_players
+from .schemas import PlayerCreate, SessionCreate, AttendanceUpdate, SubstituteRequest, SwapRequest
+from .services.selection import select_players, eligible_players, BLOCK_AFTER, SHARE_WEIGHT
 from .services.teams import balance_teams
 from .services.fairness import history
 
@@ -215,6 +216,12 @@ async def attendance(session_id: int, player_id: int, data: AttendanceUpdate, db
         raise HTTPException(400, "Status inválido")
 
     a.status = status
+    if status == "expected":
+        # "Expected" means not here yet, so a check-in marked by mistake has to
+        # be undone - otherwise the wrong arrival time keeps defining both the
+        # opening line-up and the presence window fairness.history() works from.
+        a.arrived_at = None
+        a.arrival_order = None
     if status == "arrived" and a.arrived_at is None:
         max_order = db.execute(
             select(Attendance.arrival_order)
@@ -222,8 +229,10 @@ async def attendance(session_id: int, player_id: int, data: AttendanceUpdate, db
         ).scalars().all()
         a.arrival_order = max([x for x in max_order if x is not None], default=0) + 1
         a.arrived_at = datetime.utcnow()
-    if status == "left":
-        a.left_at = datetime.utcnow()
+    # Only meaningful while the player is actually gone: a left_at left behind
+    # after they check in again puts every later match outside their presence
+    # window, freezing both streaks at zero so selection never stops picking them.
+    a.left_at = datetime.utcnow() if status == "left" else None
 
     event(db, session_id, f"attendance_{status}", player_id)
     db.commit()
@@ -270,15 +279,7 @@ async def generate_match(session_id: int, db: DBSession = Depends(get_db)):
     if len(chosen) < 2:
         raise HTTPException(400, "É preciso ter pelo menos 2 jogadores presentes")
 
-    last_match = db.execute(
-        select(Match).where(Match.session_id == session_id).order_by(Match.number.desc())
-    ).scalars().first()
-    previous_teams = {}
-    if last_match:
-        for mp in db.execute(select(MatchPlayer).where(MatchPlayer.match_id == last_match.id)).scalars():
-            previous_teams[mp.player_id] = mp.team
-
-    a, b, diff = balance_teams(chosen, previous_teams)
+    a, b, diff = balance_teams(chosen)
 
     last_num = db.execute(
         select(Match.number).where(Match.session_id == session_id)
@@ -353,22 +354,32 @@ def substitutes(match_id: int, db: DBSession = Depends(get_db)):
     }
 
     candidates = []
+    resting = []
     hist = history(db, m.session_id)
     for a, p in eligible_players(db, m.session_id):
         if p.id in current:
             continue
         h = hist[p.id]
-        # Substitution score: prioritize waiting, then lower recent workload.
-        cost = h["playing_streak"] * 100 + h["minutes"] * 0.2 - h["outside_streak"] * 500
-        candidates.append({
+        # Substitution score: prioritize waiting, then whoever has been skipped most.
+        cost = h["playing_streak"] * 100 + h["share"] * SHARE_WEIGHT - h["outside_streak"] * 500
+        entry = {
             "id": p.id,
             "name": p.name,
             "score": p.score,
             "outside_streak": h["outside_streak"],
             "playing_streak": h["playing_streak"],
-            "minutes": round(h["minutes"], 1),
+            "matches": h["matches"],
             "cost": cost,
-        })
+        }
+        # Walking on would be a third match in a row, which the group rules out.
+        (resting if h["playing_streak"] >= BLOCK_AFTER else candidates).append(entry)
+
+    # Mid-match the alternative is playing a man short, so an emergency can
+    # override the bench. Before the match starts there is no emergency: a
+    # voluntary swap never buys anyone a third match in a row.
+    if not candidates and m.status == "running":
+        candidates = resting
+
     return sorted(candidates, key=lambda x: x["cost"])[:8]
 
 
@@ -378,16 +389,25 @@ async def substitute(match_id: int, data: SubstituteRequest, db: DBSession = Dep
     if not m or m.status != "running":
         raise HTTPException(400, "Partida não está em andamento")
 
-    exited = db.execute(
-        select(MatchPlayer).where(
-            MatchPlayer.match_id == match_id,
-            MatchPlayer.exited_at.is_not(None)
-        )
+    rows = db.execute(
+        select(MatchPlayer).where(MatchPlayer.match_id == match_id)
     ).scalars().all()
-    if not exited:
-        raise HTTPException(400, "Nenhuma vaga de substituição registrada")
 
-    mp_exit = exited[-1]
+    # A team whose replacement already walked on is back to full, so the next
+    # substitute belongs to the other one - otherwise two people leaving before
+    # anyone comes back would both be replaced on the same side.
+    team_size = Counter(mp.team for mp in rows if mp.role == "starter")
+    on_court = Counter(mp.team for mp in rows if mp.exited_at is None)
+    vacancies = sorted(
+        (mp for mp in rows if mp.exited_at is not None),
+        key=lambda mp: mp.exited_at,
+        reverse=True,
+    )
+    mp_exit = next(
+        (mp for mp in vacancies if on_court[mp.team] < team_size[mp.team]), None
+    )
+    if not mp_exit:
+        raise HTTPException(400, "Nenhuma vaga de substituição registrada")
     player = db.get(Player, data.player_id)
     if not player:
         raise HTTPException(404, "Jogador não encontrado")
@@ -413,6 +433,53 @@ async def substitute(match_id: int, data: SubstituteRequest, db: DBSession = Dep
     event(db, m.session_id, "player_substituted", data.player_id, match_id, {
         "replaced_player_id": mp_exit.player_id,
         "team": mp_exit.team,
+    })
+    db.commit()
+    await broadcast(m.session_id)
+    return {"ok": True}
+
+
+@app.post("/api/matches/{match_id}/swap")
+async def swap_player(match_id: int, data: SwapRequest, db: DBSession = Depends(get_db)):
+    m = db.get(Match, match_id)
+    if not m or m.status != "proposed":
+        raise HTTPException(400, "Só dá para trocar antes da partida começar")
+
+    slot = db.execute(
+        select(MatchPlayer).where(
+            MatchPlayer.match_id == match_id,
+            MatchPlayer.player_id == data.out_player_id,
+        )
+    ).scalar_one_or_none()
+    if not slot:
+        raise HTTPException(404, "Jogador não está na partida")
+
+    taken = db.execute(
+        select(MatchPlayer).where(
+            MatchPlayer.match_id == match_id,
+            MatchPlayer.player_id == data.in_player_id,
+        )
+    ).scalar_one_or_none()
+    if taken:
+        raise HTTPException(400, "Jogador já está na partida")
+
+    present = db.execute(
+        select(Attendance).where(
+            Attendance.session_id == m.session_id,
+            Attendance.player_id == data.in_player_id,
+            Attendance.status == "arrived",
+        )
+    ).scalar_one_or_none()
+    if not present:
+        raise HTTPException(400, "Jogador não está presente")
+
+    if history(db, m.session_id)[data.in_player_id]["playing_streak"] >= BLOCK_AFTER:
+        raise HTTPException(400, "Jogador já jogou duas seguidas e está de fora desta")
+
+    slot.player_id = data.in_player_id
+    event(db, m.session_id, "player_swapped", data.in_player_id, match_id, {
+        "replaced_player_id": data.out_player_id,
+        "team": slot.team,
     })
     db.commit()
     await broadcast(m.session_id)

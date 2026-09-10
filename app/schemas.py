@@ -18,3 +18,8 @@ class AttendanceUpdate(BaseModel):
 
 class SubstituteRequest(BaseModel):
     player_id: int
+
+
+class SwapRequest(BaseModel):
+    out_player_id: int
+    in_player_id: int

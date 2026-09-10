@@ -5,6 +5,14 @@ from sqlalchemy.orm import Session as DBSession
 from ..models import Attendance, Player, Match
 from .fairness import history
 
+# How many matches in a row send someone to the bench for the next one.
+BLOCK_AFTER = 2
+# Matches watched from the bench while present break ties between people with
+# the same wait - whoever has been skipped most goes in first. Deliberately far
+# below the weight of a match spent waiting, so it orders equals without ever
+# outranking them.
+SHARE_WEIGHT = 300
+
 
 def eligible_players(db: DBSession, session_id: int):
     rows = db.execute(
@@ -17,6 +25,28 @@ def eligible_players(db: DBSession, session_id: int):
         .order_by(Attendance.arrival_order)
     ).all()
     return [(a, p) for a, p in rows]
+
+
+def without_players_needing_a_rest(available, hist, n, raffle):
+    """Drop whoever already played BLOCK_AFTER matches in a row.
+
+    Below 18 people a full court cannot be filled without them, so the rest is
+    cancelled for exactly as many as the court is short - shortest streak first,
+    then the draw - and never for anyone beyond that.
+    """
+    resting = [x for x in available if hist[x[1].id]["playing_streak"] >= BLOCK_AFTER]
+    if not resting:
+        return available
+
+    playing = [x for x in available if hist[x[1].id]["playing_streak"] < BLOCK_AFTER]
+    short_by = n - len(playing)
+    if short_by <= 0:
+        return playing
+
+    called_back = sorted(
+        resting, key=lambda x: (hist[x[1].id]["playing_streak"], raffle[x[1].id])
+    )[:short_by]
+    return playing + called_back
 
 
 def select_players(db: DBSession, session_id: int, target: int = 12):
@@ -51,13 +81,14 @@ def select_players(db: DBSession, session_id: int, target: int = 12):
         # Large reward for having waited multiple matches.
         wait = h["outside_streak"]
         played = h["playing_streak"]
-        minutes = h["minutes"]
         return (
             -wait * 1000
             + played * 180
-            + minutes * 0.25
+            + h["share"] * SHARE_WEIGHT
             + tiebreak(a, p)
         )
+
+    available = without_players_needing_a_rest(available, hist, n, raffle)
 
     ranked = sorted(available, key=priority)
 
@@ -90,11 +121,8 @@ def select_players(db: DBSession, session_id: int, target: int = 12):
             # Favor waiting, penalize consecutive playing.
             cost += h["playing_streak"] * 180
             cost -= h["outside_streak"] * 1000
-            cost += h["minutes"] * 0.25
+            cost += h["share"] * SHARE_WEIGHT
             cost += tiebreak(a, p)
-
-        # Penalize selecting too many people who just played.
-        cost += sum(120 for _, p in combo if hist[p.id]["playing_streak"] >= 2)
 
         if cost < best_cost:
             best_cost = cost
