@@ -89,3 +89,7 @@ O raciocínio e as simulações que validaram essas regras estão em [SIMULATION
 - Não integra com WhatsApp: a lista de confirmados é cadastrada à mão.
 - Registra só quem venceu cada partida, não o placar.
 - Uma sessão ativa por vez, banco SQLite local.
+
+## Licença
+
+MIT — veja [LICENSE](LICENSE).
