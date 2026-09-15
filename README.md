@@ -1,8 +1,8 @@
 # Vôlei MVP
 
-Gerenciador de noites de vôlei para um grupo fixo: check-in por ordem de chegada, rodízio justo de quem joga, times equilibrados e substituições, sincronizado em tempo real entre celulares.
+Gerenciador de sessões de vôlei para um grupo fixo: check-in por ordem de chegada, rodízio justo de quem joga, times equilibrados e substituições, sincronizado em tempo real entre celulares.
 
-Feito para um grupo real que joga 6x6 com 15–25 pessoas por noite, onde quem fica de fora precisa conseguir entender por que ficou.
+Feito para um grupo real que joga 6x6 com 15–25 pessoas por sessão, onde quem fica de fora precisa conseguir entender por que ficou.
 
 ## Antes de usar: a lista de jogadores
 
@@ -49,9 +49,9 @@ docker compose up -d --build
 
 Testes: `pytest`.
 
-## Uma noite de jogo
+## Um dia de jogo
 
-1. **Crie a sessão do dia** com quem confirmou presença (o botão na tela fica desabilitado para ninguém resetar a noite sem querer):
+1. **Crie a sessão do dia** com quem confirmou presença (o botão na tela fica desabilitado para ninguém resetar a sessão sem querer):
 
    ```bash
    curl -X POST http://localhost:8000/api/sessions \
