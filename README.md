@@ -1,107 +1,89 @@
 # Vôlei MVP
 
-Gerenciador local de sessões de vôlei para celular/computador, com:
+Gerenciador de noites de vôlei para um grupo fixo: check-in por ordem de chegada, rodízio justo de quem joga, times equilibrados e substituições, sincronizado em tempo real entre celulares.
 
-- pré-lista da noite;
-- check-in por ordem de chegada;
-- jogadores fora da lista;
-- faltas e saída antecipada;
-- seleção justa dos próximos jogadores;
-- times equilibrados por score;
-- preferência por distribuição de homens/mulheres;
-- substituições durante a partida;
-- sincronização em tempo real via WebSocket;
-- histórico da sessão;
-- modo simples para outra pessoa administrar.
+Feito para um grupo real que joga 6x6 com 15–25 pessoas por noite, onde quem fica de fora precisa conseguir entender por que ficou.
 
-## Requisitos
+## Antes de usar: a lista de jogadores
+
+O app **não funciona sem um cadastro prévio**. Para cada pessoa do grupo você precisa de:
+
+| Campo | O que é |
+|---|---|
+| **Nome** | Único. Se houver dois nomes iguais, diferencie (ex.: `Silvana (2)`). |
+| **Gênero** | `M` ou `F` — usado para distribuir homens e mulheres entre os times. |
+| **Score** | Nível de jogo, numa escala de ~40 (iniciante) a ~95 (muito forte). |
+
+Sobre o score:
+
+- Ele **só serve para equilibrar os times**. Nunca decide quem joga — isso é só pelo rodízio.
+- Compare homens com homens e mulheres com mulheres. Internamente os homens recebem +10 na hora de montar os times (`MALE_ADJUSTMENT` em `app/services/teams.py`), calibrado a partir de "um homem 80 joga como uma mulher 90". Ajuste para o seu grupo.
+- Não precisa ser preciso. Chute (70 para intermediário) e corrija depois de ver a pessoa jogar.
+
+Dá para cadastrar pela tela (**⚙ Jogadores**) ou pela API:
+
+```bash
+curl -X POST http://localhost:8000/api/players \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "Ana", "score": 70, "gender": "F"}'
+```
+
+## Rodar
 
 Python 3.11+.
 
-## Rodar no Mac
-
 ```bash
-cd volei-mvp
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-No mesmo Mac:
+Abra `http://127.0.0.1:8000`. Para usar nos celulares na mesma rede Wi-Fi, abra `http://IP_DO_COMPUTADOR:8000` (no Mac: `ipconfig getifaddr en0`).
 
-```text
-http://127.0.0.1:8000
-```
-
-Para abrir em celulares na mesma rede Wi-Fi, descubra o IP do Mac:
+Ou com Docker (o banco fica em `./data/volei.db`):
 
 ```bash
-ipconfig getifaddr en0
+docker compose up -d --build
 ```
 
-ou, se estiver no Wi-Fi via outra interface:
+Testes: `pytest`.
 
-```bash
-ifconfig | grep "inet "
-```
+## Uma noite de jogo
 
-Depois abra no celular:
+1. **Crie a sessão do dia** com quem confirmou presença (o botão na tela fica desabilitado para ninguém resetar a noite sem querer):
 
-```text
-http://IP_DO_MAC:8000
-```
+   ```bash
+   curl -X POST http://localhost:8000/api/sessions \
+     -H 'Content-Type: application/json' \
+     -d '{"name": "Vôlei 14/09", "player_ids": [1, 2, 3]}'
+   ```
 
-Exemplo:
+   Sem `player_ids`, todos os jogadores cadastrados entram na pré-lista.
+2. Conforme as pessoas chegam, marque **Chegou** — a ordem de chegada importa na primeira partida.
+3. **Gerar próxima partida** → o app escolhe 12 pessoas e monta os times, mostrando o motivo de cada escolha.
+4. **Iniciar**. Se alguém se machucar ou for embora no meio, toque em **Saiu** e escolha o substituto sugerido.
+5. **Encerrar** e repita.
 
-```text
-http://192.168.1.42:8000
-```
+Quem chega sem estar na lista entra por **+ Pessoa fora da lista**.
 
-Se o macOS pedir permissão para conexões de entrada, permita para Python.
+## Regras do rodízio
 
-## Fluxo do MVP
+Combinadas com o grupo:
 
-1. Cadastre os jogadores permanentes e seus scores.
-2. Crie uma sessão.
-3. Selecione quem confirmou na pré-lista.
-4. Durante a chegada, marque `Chegou`.
-5. Quando quiser, clique em `Gerar próxima partida`.
-6. O sistema escolhe os jogadores e monta os times.
-7. Clique em `Iniciar partida`.
-8. Se alguém sair, use `Saiu` e escolha a substituição sugerida.
-9. Ao terminar, clique em `Encerrar partida`.
-10. Repita.
+1. **Ninguém joga 3 partidas seguidas.** Quem jogou 2 fica de fora da próxima. (Abaixo de 18 presentes isso não cabe no 6x6; aí o app libera o mínimo de gente necessário.)
+2. **Quem esperou entra.** Na prática, ninguém espera mais de uma partida seguida enquanto houver até ~24 presentes.
+3. **As vagas que sobram** vão para quem jogou a menor *fração* das partidas em que estava presente — proporcional, para não favorecer nem punir quem chegou tarde. Empates são sorteados.
+4. **Sempre 6x6.**
+5. **Entrar como substituto é emergência:** não conta como partida jogada nem prende a pessoa na regra das seguidas.
 
-## Filosofia do algoritmo
+Os critérios são baseados em contagem de partidas, não em minutos jogados — depender de alguém apertar iniciar/encerrar na hora certa se mostrou frágil.
 
-O sistema separa:
+O raciocínio e as simulações que validaram essas regras estão em [SIMULATION.md](SIMULATION.md).
 
-- **skill score**: capacidade estimada do jogador;
-- **fairness**: histórico da sessão.
+## Limitações deliberadas
 
-O score não determina quem tem direito de jogar. Ele é usado principalmente para equilibrar os times.
-
-A seleção considera:
-
-- espera acumulada;
-- partidas consecutivas fora;
-- partidas consecutivas jogadas;
-- total de tempo jogado;
-- tempo desde a última participação.
-
-A divisão dos times considera:
-
-- soma dos scores;
-- diferença de distribuição de scores;
-- distribuição de homens/mulheres.
-
-## Limitações deliberadas do MVP
-
-- Não integra automaticamente com WhatsApp.
-- Não exige registro do minuto exato: timestamps são automáticos.
-- Não tenta registrar pontos/rallies.
-- Não tem autenticação.
-- Não é projetado para ficar exposto diretamente à Internet.
-
-A ideia é validar o fluxo real no vôlei antes de adicionar complexidade.
+- **Sem autenticação.** Qualquer um com o link controla a sessão. Rode na rede local ou deixe no ar só durante o jogo.
+- Não integra com WhatsApp: a lista de confirmados é cadastrada à mão.
+- Não registra placar nem pontos.
+- Uma sessão ativa por vez, banco SQLite local.
