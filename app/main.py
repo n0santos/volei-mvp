@@ -9,14 +9,16 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, delete
 from sqlalchemy.orm import Session as DBSession
 
-from .database import Base, engine, get_db, SessionLocal
+from .database import Base, engine, get_db, SessionLocal, add_missing_columns
 from .models import Player, Session as GameSession, Attendance, Match, MatchPlayer, Event
-from .schemas import PlayerCreate, SessionCreate, AttendanceUpdate, SubstituteRequest, SwapRequest
+from .schemas import PlayerCreate, SessionCreate, AttendanceUpdate, SubstituteRequest, SwapRequest, FinishRequest
 from .services.selection import select_players, eligible_players, BLOCK_AFTER, SHARE_WEIGHT
 from .services.teams import balance_teams
 from .services.fairness import history
+from .services.ranking import ranking
 
 Base.metadata.create_all(bind=engine)
+add_missing_columns()
 
 app = FastAPI(title="Vôlei MVP")
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
@@ -192,6 +194,7 @@ def session_state(session_id: int, db: DBSession = Depends(get_db)):
         "players": players_data,
         "current_match": current,
         "match_count": len(matches),
+        "ranking": ranking(db, session_id),
     }
 
 
@@ -503,19 +506,21 @@ async def swap_player(match_id: int, data: SwapRequest, db: DBSession = Depends(
 
 
 @app.post("/api/matches/{match_id}/finish")
-async def finish_match(match_id: int, db: DBSession = Depends(get_db)):
+async def finish_match(match_id: int, data: FinishRequest | None = None, db: DBSession = Depends(get_db)):
     m = db.get(Match, match_id)
     if not m:
         raise HTTPException(404, "Partida não encontrada")
     now = datetime.utcnow()
     m.status = "finished"
     m.ended_at = now
+    if data and data.winner:
+        m.winner = data.winner
 
     for mp in db.execute(select(MatchPlayer).where(MatchPlayer.match_id == m.id)).scalars():
         if mp.entered_at and mp.exited_at is None:
             mp.exited_at = now
 
-    event(db, m.session_id, "match_finished", match_id=m.id)
+    event(db, m.session_id, "match_finished", match_id=m.id, payload={"winner": m.winner})
     db.commit()
     await broadcast(m.session_id)
     return {"ok": True}

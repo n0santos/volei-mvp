@@ -63,7 +63,9 @@ Testes: `pytest`.
 2. Conforme as pessoas chegam, marque **Chegou** — a ordem de chegada importa na primeira partida.
 3. **Gerar próxima partida** → o app escolhe 12 pessoas e monta os times, mostrando o motivo de cada escolha.
 4. **Iniciar**. Se alguém se machucar ou for embora no meio, toque em **Saiu** e escolha o substituto sugerido.
-5. **Encerrar** e repita.
+5. Ao terminar, toque em **Time A venceu** ou **Time B venceu** e repita.
+
+As vitórias alimentam o **ranking do dia**, ordenado por vitórias ÷ partidas jogadas (quem ficou mais tempo não lidera só por ter jogado mais). Entrar como substituto não conta.
 
 Quem chega sem estar na lista entra por **+ Pessoa fora da lista**.
 
@@ -85,5 +87,5 @@ O raciocínio e as simulações que validaram essas regras estão em [SIMULATION
 
 - **Sem autenticação.** Qualquer um com o link controla a sessão. Rode na rede local ou deixe no ar só durante o jogo.
 - Não integra com WhatsApp: a lista de confirmados é cadastrada à mão.
-- Não registra placar nem pontos.
+- Registra só quem venceu cada partida, não o placar.
 - Uma sessão ativa por vez, banco SQLite local.

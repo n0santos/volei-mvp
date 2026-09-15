@@ -61,12 +61,19 @@
         </div>
         <div class="actions">
           <button id="startMatch" class="primary">▶ Iniciar</button>
-          <button id="finishMatch" class="danger hidden">⏹ Encerrar</button>
+          <button class="finishMatch danger hidden" data-winner="A">🏆 Time A venceu</button>
+          <button class="finishMatch danger hidden" data-winner="B">🏆 Time B venceu</button>
           <button id="resetMatch">Refazer</button>
         </div>
       </div>
       <div id="teams" class="teams"></div>
       <div id="substitution" class="panel inner hidden"></div>
+    </section>
+
+    <section id="rankingPanel" class="panel hidden">
+      <h2>Ranking do dia</h2>
+      <div class="muted">Vitórias ÷ partidas jogadas. Entrar como substituto não conta.</div>
+      <ol id="ranking" class="ranking"></ol>
     </section>
   </main>
 

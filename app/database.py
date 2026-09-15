@@ -18,6 +18,15 @@ class Base(DeclarativeBase):
     pass
 
 
+def add_missing_columns():
+    # create_all() never alters existing tables, so columns added after a
+    # database was created have to be added by hand.
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(matches)")}
+        if cols and "winner" not in cols:
+            conn.exec_driver_sql("ALTER TABLE matches ADD COLUMN winner VARCHAR(1)")
+
+
 def get_db():
     db = SessionLocal()
     try:

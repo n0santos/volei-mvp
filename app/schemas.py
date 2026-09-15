@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -18,6 +20,10 @@ class AttendanceUpdate(BaseModel):
 
 class SubstituteRequest(BaseModel):
     player_id: int
+
+
+class FinishRequest(BaseModel):
+    winner: Literal["A", "B"] | None = None
 
 
 class SwapRequest(BaseModel):
