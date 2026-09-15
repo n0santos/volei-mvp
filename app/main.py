@@ -342,14 +342,17 @@ async def exit_player(match_id: int, player_id: int, db: DBSession = Depends(get
 
 
 @app.get("/api/matches/{match_id}/substitutes")
-def substitutes(match_id: int, db: DBSession = Depends(get_db)):
+def substitutes(match_id: int, db: DBSession = Depends(get_db), out_player_id: int | None = None):
     m = db.get(Match, match_id)
     if not m:
         raise HTTPException(404, "Partida não encontrada")
+    return substitute_candidates(db, m, out_player_id)[:8]
 
+
+def substitute_candidates(db: DBSession, m: Match, out_player_id: int | None = None):
     current = {
         mp.player_id for mp in db.execute(
-            select(MatchPlayer).where(MatchPlayer.match_id == match_id)
+            select(MatchPlayer).where(MatchPlayer.match_id == m.id)
         ).scalars()
     }
 
@@ -375,12 +378,24 @@ def substitutes(match_id: int, db: DBSession = Depends(get_db)):
         (resting if h["playing_streak"] >= BLOCK_AFTER else candidates).append(entry)
 
     # Mid-match the alternative is playing a man short, so an emergency can
-    # override the bench. Before the match starts there is no emergency: a
-    # voluntary swap never buys anyone a third match in a row.
-    if not candidates and m.status == "running":
+    # override the bench. Before the start it's only an emergency when the one
+    # going out has left: a voluntary swap never buys anyone a third in a row.
+    if not candidates and (m.status == "running" or has_left(db, m.session_id, out_player_id)):
         candidates = resting
 
-    return sorted(candidates, key=lambda x: x["cost"])[:8]
+    return sorted(candidates, key=lambda x: x["cost"])
+
+
+def has_left(db: DBSession, session_id: int, player_id: int | None):
+    if player_id is None:
+        return False
+    a = db.execute(
+        select(Attendance).where(
+            Attendance.session_id == session_id,
+            Attendance.player_id == player_id,
+        )
+    ).scalar_one_or_none()
+    return a is not None and a.status != "arrived"
 
 
 @app.post("/api/matches/{match_id}/substitute")
@@ -473,7 +488,8 @@ async def swap_player(match_id: int, data: SwapRequest, db: DBSession = Depends(
     if not present:
         raise HTTPException(400, "Jogador não está presente")
 
-    if history(db, m.session_id)[data.in_player_id]["playing_streak"] >= BLOCK_AFTER:
+    allowed = {c["id"] for c in substitute_candidates(db, m, data.out_player_id)}
+    if data.in_player_id not in allowed:
         raise HTTPException(400, "Jogador já jogou duas seguidas e está de fora desta")
 
     slot.player_id = data.in_player_id

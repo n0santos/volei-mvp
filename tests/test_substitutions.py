@@ -123,6 +123,47 @@ def test_voluntary_swap_never_offers_someone_on_their_third():
     assert substitutes(proposed.id, db) == []
 
 
+def test_someone_leaving_before_the_start_is_an_emergency_too():
+    # Drawn, then went home before the match started. With nobody rested on the
+    # bench the choice is a tired player or a team a man short - always 6x6.
+    db = make_db()
+    session = GameSession(name="test")
+    db.add(session)
+    db.flush()
+    tired, leaving = add_players(db, session, ["Tired", "Leaving"])
+
+    add_match(db, session, 1, [tired])
+    add_match(db, session, 2, [tired])
+    proposed = add_match(db, session, 3, [leaving], status="proposed")
+    db.query(Attendance).filter_by(player_id=leaving.id).update({"status": "left"})
+    db.commit()
+
+    offered = substitutes(proposed.id, db, out_player_id=leaving.id)
+    assert [c["name"] for c in offered] == ["Tired"]
+
+    do_swap(db, proposed.id, leaving, tired)
+    squad = [mp.player_id for mp in db.query(MatchPlayer).filter_by(match_id=proposed.id)]
+    assert squad == [tired.id]
+
+
+def test_leaving_does_not_unlock_a_tired_player_while_someone_rested_waits():
+    db = make_db()
+    session = GameSession(name="test")
+    db.add(session)
+    db.flush()
+    tired, rested, leaving = add_players(db, session, ["Tired", "Rested", "Leaving"])
+
+    add_match(db, session, 1, [tired])
+    add_match(db, session, 2, [tired])
+    proposed = add_match(db, session, 3, [leaving], status="proposed")
+    db.query(Attendance).filter_by(player_id=leaving.id).update({"status": "left"})
+    db.commit()
+
+    assert [c["name"] for c in substitutes(proposed.id, db, out_player_id=leaving.id)] == ["Rested"]
+    with pytest.raises(HTTPException):
+        do_swap(db, proposed.id, leaving, tired)
+
+
 def test_emergency_substitution_still_falls_back_to_a_tired_player():
     # Mid-match the alternative is playing a man short, so the bench rule gives.
     db = make_db()

@@ -199,7 +199,7 @@ function renderMatch() {
 async function offerSwap(matchId, outId) {
   try {
     const leaving = (state.players || []).find(p => p.id === outId);
-    const candidates = await api(`/api/matches/${matchId}/substitutes`);
+    const candidates = await api(`/api/matches/${matchId}/substitutes?out_player_id=${outId}`);
     const box = $("substitution");
     box.classList.remove("hidden");
     box.innerHTML = `
@@ -209,7 +209,7 @@ async function offerSwap(matchId, outId) {
         <button onclick="doSwap(${matchId},${outId},${p.id})" style="display:block;width:100%;text-align:left;margin:6px 0">
           <strong>${esc(p.name)}</strong> · espera ${p.outside_streak} · ${p.matches} ${p.matches === 1 ? 'partida' : 'partidas'}
         </button>
-      `).join("") : "<p>Ninguém disponível para entrar — quem já jogou duas seguidas não pode entrar numa troca.</p>"}
+      `).join("") : "<p>Ninguém disponível para entrar — quem já jogou duas seguidas não pode entrar numa troca. Se a pessoa foi embora, marque a saída dela na lista de presença e toque em Trocar de novo.</p>"}
       <button onclick="document.getElementById('substitution').classList.add('hidden')">Cancelar</button>`;
   } catch(e) { toast(e.message); }
 }
