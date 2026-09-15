@@ -12,6 +12,20 @@ function toast(msg) {
   window._toast = setTimeout(() => t.style.display = "none", 2200);
 }
 
+// Disables the buttons and shows `label` while the request runs, so a tap
+// visibly registers and a second tap can't fire it twice.
+async function busy(buttons, label, fn) {
+  const saved = buttons.map(b => b.textContent);
+  buttons.forEach(b => { b.disabled = true; b.textContent = label; });
+  try {
+    await fn();
+  } catch(e) {
+    toast(e.message);
+  } finally {
+    buttons.forEach((b, i) => { b.disabled = false; b.textContent = saved[i]; });
+  }
+}
+
 async function api(url, options={}) {
   const r = await fetch(url, {
     headers: {"Content-Type":"application/json"},
@@ -313,20 +327,22 @@ $("addOutside").onclick = async () => {
   } catch(e) { toast(e.message); }
 };
 
-$("generate").onclick = async () => {
-  try {
-    const r = await api(`/api/sessions/${sessionId}/generate`, {method:"POST"});
-    await refresh();
-  } catch(e) { toast(e.message); }
-};
+$("generate").onclick = () => busy([$("generate")], "Sorteando…", async () => {
+  await api(`/api/sessions/${sessionId}/generate`, {method:"POST"});
+  await refresh();
+  toast(`Partida ${state.current_match.number} sorteada`);
+  // The teams render below the attendance list, off screen on a phone.
+  $("matchPanel").scrollIntoView({behavior:"smooth", block:"start"});
+});
 
-$("startMatch").onclick = async () => {
+$("startMatch").onclick = () => {
   const m = state.current_match;
   if (!m) return;
-  try {
+  busy([$("startMatch")], "Iniciando…", async () => {
     await api(`/api/matches/${m.id}/start`, {method:"POST"});
     await refresh();
-  } catch(e) { toast(e.message); }
+    toast(`Partida ${m.number} começou`);
+  });
 };
 
 document.querySelectorAll(".finishMatch").forEach(btn => btn.onclick = async () => {
@@ -334,10 +350,11 @@ document.querySelectorAll(".finishMatch").forEach(btn => btn.onclick = async () 
   if (!m) return;
   const winner = btn.dataset.winner;
   if (!confirm(`Encerrar a partida com vitória do Time ${winner}?`)) return;
-  try {
+  busy([...document.querySelectorAll(".finishMatch")], "Encerrando…", async () => {
     await api(`/api/matches/${m.id}/finish`, {method:"POST", body:JSON.stringify({winner})});
     await refresh();
-  } catch(e) { toast(e.message); }
+    toast(`Partida ${m.number} encerrada — vitória do Time ${winner}`);
+  });
 });
 
 function renderRanking() {

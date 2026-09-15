@@ -83,6 +83,7 @@ button {
   cursor: pointer;
 }
 button:hover { background: var(--sand); }
+button:disabled { opacity: .6; cursor: progress; }
 button.primary { background: var(--court); color: white; border-color: var(--court); }
 button.primary:hover { background: var(--court-dark); }
 button.danger { background: var(--danger); color: white; border-color: var(--danger); }
@@ -153,6 +154,7 @@ button.danger { background: var(--danger); color: white; border-color: var(--dan
   border-radius: 8px;
   display: none;
   max-width: 90%;
+  z-index: 10;
 }
 
 @media(max-width:700px) {
