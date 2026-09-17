@@ -47,7 +47,6 @@ class Match(Base):
     status: Mapped[str] = mapped_column(String(20), default="proposed")
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    winner: Mapped[str | None] = mapped_column(String(1), nullable=True)
 
 
 class MatchPlayer(Base):

@@ -63,9 +63,7 @@ Testes: `pytest`.
 2. Conforme as pessoas chegam, marque **Chegou** — a ordem de chegada importa na primeira partida.
 3. **Gerar próxima partida** → o app escolhe 12 pessoas e monta os times, mostrando o motivo de cada escolha.
 4. **Iniciar**. Se alguém se machucar ou for embora no meio, toque em **Saiu** e escolha o substituto sugerido.
-5. Ao terminar, toque em **Time A venceu** ou **Time B venceu** e repita.
-
-As vitórias alimentam o **ranking do dia**, ordenado por vitórias ÷ partidas jogadas (quem ficou mais tempo não lidera só por ter jogado mais). Entrar como substituto não conta.
+5. Ao terminar, toque em **Encerrar** e repita.
 
 Quem chega sem estar na lista entra por **+ Pessoa fora da lista**.
 

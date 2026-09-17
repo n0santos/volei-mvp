@@ -78,7 +78,6 @@ async function refresh() {
   state = await api(`/api/sessions/${sessionId}`);
   renderAttendance();
   renderMatch();
-  renderRanking();
 }
 
 function renderAttendance() {
@@ -207,7 +206,7 @@ function renderMatch() {
   }).join("");
 
   $("startMatch").classList.toggle("hidden", m.status !== "proposed");
-  document.querySelectorAll(".finishMatch").forEach(b => b.classList.toggle("hidden", m.status !== "running"));
+  $("finishMatch").classList.toggle("hidden", m.status !== "running");
   $("substitution").classList.add("hidden");
 }
 
@@ -345,26 +344,16 @@ $("startMatch").onclick = () => {
   });
 };
 
-document.querySelectorAll(".finishMatch").forEach(btn => btn.onclick = async () => {
+$("finishMatch").onclick = async () => {
   const m = state.current_match;
   if (!m) return;
-  const winner = btn.dataset.winner;
-  if (!confirm(`Encerrar a partida com vitória do Time ${winner}?`)) return;
-  busy([...document.querySelectorAll(".finishMatch")], "Encerrando…", async () => {
-    await api(`/api/matches/${m.id}/finish`, {method:"POST", body:JSON.stringify({winner})});
+  if (!confirm("Encerrar a partida?")) return;
+  busy([$("finishMatch")], "Encerrando…", async () => {
+    await api(`/api/matches/${m.id}/finish`, {method:"POST"});
     await refresh();
-    toast(`Partida ${m.number} encerrada — vitória do Time ${winner}`);
+    toast(`Partida ${m.number} encerrada`);
   });
-});
-
-function renderRanking() {
-  const rows = state.ranking || [];
-  $("rankingPanel").classList.toggle("hidden", !rows.length);
-  $("ranking").innerHTML = rows.map(r => `
-    <li><span>${esc(r.name)}</span>
-      <span class="muted">${r.wins}/${r.played} · ${Math.round(r.rate * 100)}%</span></li>
-  `).join("");
-}
+};
 
 $("resetMatch").onclick = async () => {
   if (!confirm("Apagar a partida proposta/em andamento e gerar novamente?")) return;
