@@ -54,6 +54,12 @@ function esc(s) {
   }[c]));
 }
 
+// Lowercase + strip accents, so "cecilia" finds "Cecília" — useful with ~60
+// names on the pre-list and phone keyboards that don't default to accents.
+function normalize(s) {
+  return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
 async function loadActive() {
   const s = await api("/api/sessions/active");
   if (s) {
@@ -61,6 +67,7 @@ async function loadActive() {
     $("sessionName").textContent = s.name;
     $("sessionPanel").classList.remove("hidden");
     $("setup").classList.add("hidden");
+    $("attendanceSearch").value = "";
     connectWS();
     await refresh();
   }
@@ -86,7 +93,11 @@ function renderAttendance() {
   const active = ps.filter(p => ["arrived"].includes(p.status)).length;
   $("counts").textContent = `${arrived} presentes · ${state.match_count} partidas registradas`;
 
-  $("attendance").innerHTML = ps.map(p => {
+  // Counts above always reflect everyone, not just what the search matches.
+  const term = normalize($("attendanceSearch").value.trim());
+  const visible = term ? ps.filter(p => normalize(p.name).includes(term)) : ps;
+
+  $("attendance").innerHTML = visible.map(p => {
     let action = "";
     if (p.status === "expected") {
       action = `<button onclick="setAttendance(${p.id},'arrived')" class="primary">Chegou</button>`;
@@ -280,6 +291,8 @@ $("togglePlayers").onclick = () => {
   $("setup").classList.toggle("hidden");
 };
 
+$("attendanceSearch").oninput = () => renderAttendance();
+
 $("newSession").onclick = async () => {
   try {
     const name = prompt("Nome da sessão:", "Vôlei " + new Date().toLocaleDateString("pt-BR"));
@@ -291,6 +304,7 @@ $("newSession").onclick = async () => {
     $("sessionName").textContent = name;
     $("sessionPanel").classList.remove("hidden");
     $("setup").classList.add("hidden");
+    $("attendanceSearch").value = "";
     connectWS();
     await refresh();
   } catch(e) { toast(e.message); }
