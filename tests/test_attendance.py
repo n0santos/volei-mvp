@@ -5,9 +5,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.main import attendance
+from app.main import attendance, add_player_to_session
 from app.models import Player, Session as GameSession, Attendance, Match, MatchPlayer
-from app.schemas import AttendanceUpdate
+from app.schemas import AttendanceUpdate, PlayerCreate
 from app.services.fairness import history
 
 
@@ -102,3 +102,19 @@ def test_marking_expected_undoes_a_wrong_check_in():
     set_status(db, session.id, first.id, "arrived")
     db.refresh(a)
     assert a.arrival_order == 3
+
+
+def test_add_player_matches_existing_name_regardless_of_case():
+    # Regression: "Daniela lima" already in the roster, someone typed
+    # "Daniela Lima" mid-session and add-player created a second Player
+    # record (with default score/gender) instead of recognizing the same
+    # person, leaving a phantom duplicate in the pre-list.
+    db = make_db()
+    session, (existing,) = make_session(db, ["Daniela lima"])
+
+    p = asyncio.run(add_player_to_session(
+        session.id, PlayerCreate(name="Daniela Lima"), db
+    ))
+
+    assert p.id == existing.id
+    assert db.query(Player).count() == 1

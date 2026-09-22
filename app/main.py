@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.orm import Session as DBSession
 
 from .database import Base, engine, get_db, SessionLocal
@@ -244,7 +244,12 @@ async def attendance(session_id: int, player_id: int, data: AttendanceUpdate, db
 async def add_player_to_session(session_id: int, data: PlayerCreate, db: DBSession = Depends(get_db)):
     get_session(db, session_id)
     name = data.name.strip()
-    p = db.execute(select(Player).where(Player.name == name)).scalar_one_or_none()
+    # Match by name case-insensitively so a mid-session typo in capitalization
+    # (e.g. "Daniela Lima" vs. the roster's "Daniela lima") doesn't spawn a
+    # duplicate Player with default score/gender instead of reusing the real one.
+    p = db.execute(
+        select(Player).where(func.lower(Player.name) == func.lower(name))
+    ).scalar_one_or_none()
     if not p:
         p = Player(name=name, score=data.score, gender=data.gender.upper())
         db.add(p)
