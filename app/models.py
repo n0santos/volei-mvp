@@ -116,3 +116,14 @@ class TournamentMatch(Base):
     court: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="agendado")  # agendado/em_andamento/encerrado
     is_final: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class TournamentSetResult(Base):
+    __tablename__ = "tournament_set_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("tournament_matches.id"))
+    set_number: Mapped[int]
+    points_a: Mapped[int] = mapped_column(Integer, default=0)
+    points_b: Mapped[int] = mapped_column(Integer, default=0)
+    closed: Mapped[bool] = mapped_column(Boolean, default=False)

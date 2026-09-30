@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.models import Tournament, Team, TournamentMatch
+from app.models import Tournament, Team, TournamentMatch, TournamentSetResult
 
 
 def make_db():
@@ -193,3 +193,43 @@ def test_update_missing_match_raises_404():
     with pytest.raises(HTTPException) as exc_info:
         update_match(t.id, 999, TournamentMatchUpdate(status="encerrado"), db)
     assert exc_info.value.status_code == 404
+
+
+def test_set_result_roundtrip():
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = TournamentMatch(
+        tournament_id=t.id, team_a_id=team_a.id, team_b_id=team_b.id,
+        scheduled_at=datetime(2026, 11, 28, 13, 0),
+    )
+    db.add(m)
+    db.flush()
+
+    s = TournamentSetResult(match_id=m.id, set_number=1, points_a=18, points_b=16, closed=True)
+    db.add(s)
+    db.commit()
+
+    saved = db.query(TournamentSetResult).filter_by(match_id=m.id).one()
+    assert saved.set_number == 1
+    assert saved.points_a == 18
+    assert saved.points_b == 16
+    assert saved.closed is True
+
+
+def test_set_result_defaults():
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = TournamentMatch(
+        tournament_id=t.id, team_a_id=team_a.id, team_b_id=team_b.id,
+        scheduled_at=datetime(2026, 11, 28, 13, 0),
+    )
+    db.add(m)
+    db.flush()
+
+    s = TournamentSetResult(match_id=m.id, set_number=1)
+    db.add(s)
+    db.commit()
+
+    assert s.points_a == 0
+    assert s.points_b == 0
+    assert s.closed is False

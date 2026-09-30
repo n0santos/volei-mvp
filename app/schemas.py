@@ -66,3 +66,8 @@ class TournamentMatchUpdate(BaseModel):
     court: str | None = None
     status: str | None = None
     is_final: bool | None = None
+
+
+class SetPointRequest(BaseModel):
+    team: str
+    delta: int
