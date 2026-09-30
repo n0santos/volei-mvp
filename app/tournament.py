@@ -82,3 +82,74 @@ def tournament_state(tournament_id: int, db: DBSession = Depends(get_db)):
         "tournament": {"id": t.id, "name": t.name, "start_date": t.start_date, "end_date": t.end_date},
         "teams": teams_data,
     }
+
+
+@router.post("/api/teams/{team_id}/players")
+def add_team_player(team_id: int, data: TeamPlayerAdd, db: DBSession = Depends(get_db)):
+    team = db.get(Team, team_id)
+    if not team:
+        raise HTTPException(404, "Time não encontrado")
+    player = db.get(Player, data.player_id)
+    if not player:
+        raise HTTPException(404, "Jogador não encontrado")
+
+    existing = db.execute(
+        select(TeamPlayer).where(
+            TeamPlayer.team_id == team_id,
+            TeamPlayer.player_id == data.player_id,
+        )
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(409, "Jogador já está no time")
+
+    tp = TeamPlayer(team_id=team_id, player_id=data.player_id, role=data.role)
+    db.add(tp)
+    db.commit()
+    db.refresh(tp)
+    return tp
+
+
+def get_team_player(db, team_id, player_id):
+    tp = db.execute(
+        select(TeamPlayer).where(
+            TeamPlayer.team_id == team_id,
+            TeamPlayer.player_id == player_id,
+        )
+    ).scalar_one_or_none()
+    if not tp:
+        raise HTTPException(404, "Jogador não está neste time")
+    return tp
+
+
+@router.patch("/api/teams/{team_id}/players/{player_id}")
+def update_team_player(team_id: int, player_id: int, data: TeamPlayerUpdate, db: DBSession = Depends(get_db)):
+    tp = get_team_player(db, team_id, player_id)
+
+    if data.role is not None:
+        tp.role = data.role
+
+    if data.is_captain is True:
+        # Only one captain per team - unmark whoever had it before.
+        others = db.execute(
+            select(TeamPlayer).where(
+                TeamPlayer.team_id == team_id,
+                TeamPlayer.id != tp.id,
+            )
+        ).scalars().all()
+        for other in others:
+            other.is_captain = False
+        tp.is_captain = True
+    elif data.is_captain is False:
+        tp.is_captain = False
+
+    db.commit()
+    db.refresh(tp)
+    return tp
+
+
+@router.delete("/api/teams/{team_id}/players/{player_id}")
+def remove_team_player(team_id: int, player_id: int, db: DBSession = Depends(get_db)):
+    tp = get_team_player(db, team_id, player_id)
+    db.delete(tp)
+    db.commit()
+    return {"ok": True}

@@ -4,8 +4,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.tournament import create_tournament, active_tournament, create_team, tournament_state
-from app.schemas import TournamentCreate, TeamCreate
+from app.tournament import (
+    create_tournament, active_tournament, create_team, tournament_state,
+    add_team_player, update_team_player, remove_team_player,
+)
+from app.schemas import TournamentCreate, TeamCreate, TeamPlayerAdd, TeamPlayerUpdate
+from app.models import Player
 
 
 def make_db():
@@ -79,3 +83,90 @@ def test_tournament_state_for_missing_tournament_raises_404():
     db = make_db()
     with pytest.raises(HTTPException):
         tournament_state(999, db)
+
+
+def make_team_with_player(db):
+    t = create_tournament(
+        TournamentCreate(name="Torneio", start_date=date(2026, 11, 28), end_date=date(2026, 11, 29)), db
+    )
+    team = create_team(t.id, TeamCreate(code="A"), db)
+    player = Player(name="Ana", score=70, gender="F")
+    db.add(player)
+    db.commit()
+    return team, player
+
+
+def test_add_player_to_team():
+    db = make_db()
+    team, player = make_team_with_player(db)
+
+    tp = add_team_player(team.id, TeamPlayerAdd(player_id=player.id), db)
+    assert tp.role == "titular"
+    assert tp.is_captain is False
+
+    state = tournament_state(team.tournament_id, db)
+    assert state["teams"][0]["players"][0]["name"] == "Ana"
+
+
+def test_adding_same_player_twice_raises_conflict():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team, player = make_team_with_player(db)
+    add_team_player(team.id, TeamPlayerAdd(player_id=player.id), db)
+
+    with pytest.raises(HTTPException):
+        add_team_player(team.id, TeamPlayerAdd(player_id=player.id), db)
+
+
+def test_marking_a_new_captain_unmarks_the_previous_one():
+    db = make_db()
+    team, player = make_team_with_player(db)
+    add_team_player(team.id, TeamPlayerAdd(player_id=player.id), db)
+
+    player2 = Player(name="Beto", score=70, gender="M")
+    db.add(player2)
+    db.commit()
+    add_team_player(team.id, TeamPlayerAdd(player_id=player2.id), db)
+
+    update_team_player(team.id, player.id, TeamPlayerUpdate(is_captain=True), db)
+    update_team_player(team.id, player2.id, TeamPlayerUpdate(is_captain=True), db)
+
+    state = tournament_state(team.tournament_id, db)
+    by_name = {p["name"]: p["is_captain"] for p in state["teams"][0]["players"]}
+    assert by_name["Beto"] is True
+    assert by_name["Ana"] is False
+
+
+def test_update_role():
+    db = make_db()
+    team, player = make_team_with_player(db)
+    add_team_player(team.id, TeamPlayerAdd(player_id=player.id), db)
+
+    update_team_player(team.id, player.id, TeamPlayerUpdate(role="reserva"), db)
+
+    state = tournament_state(team.tournament_id, db)
+    assert state["teams"][0]["players"][0]["role"] == "reserva"
+
+
+def test_remove_player_from_team():
+    db = make_db()
+    team, player = make_team_with_player(db)
+    add_team_player(team.id, TeamPlayerAdd(player_id=player.id), db)
+
+    remove_team_player(team.id, player.id, db)
+
+    state = tournament_state(team.tournament_id, db)
+    assert state["teams"][0]["players"] == []
+
+
+def test_update_missing_team_player_raises_404():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team, player = make_team_with_player(db)
+
+    with pytest.raises(HTTPException):
+        update_team_player(team.id, player.id, TeamPlayerUpdate(role="reserva"), db)
