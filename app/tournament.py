@@ -252,7 +252,7 @@ def list_matches(tournament_id: int, db: DBSession = Depends(get_db)):
     matches = db.execute(
         select(TournamentMatch)
         .where(TournamentMatch.tournament_id == tournament_id)
-        .order_by(TournamentMatch.scheduled_at)
+        .order_by(TournamentMatch.scheduled_at, TournamentMatch.id)
     ).scalars().all()
 
     team_codes = {
