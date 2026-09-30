@@ -79,9 +79,19 @@ def compute_standings(matches) -> list[dict]:
     matches: só partidas ENCERRADAS, objetos com .team_a, .team_b, .sets
     (lista de tuplas (pontos_a, pontos_b)).
     Retorna uma lista de dicts por equipe (vitórias, saldo de sets, saldo
-    de pontos, pontos marcados, pontos de torneio), ordenada pela cadeia
-    de desempate literal do regulamento. Equipes empatadas em tudo saem
-    marcadas com tied=True — o motor não sorteia, só sinaliza.
+    de pontos, pontos marcados, pontos de torneio).
+
+    Critério principal de ordenação: pontos de torneio (a tabela 3/2/1/0
+    de match_points, somada por equipe) — é o que a seção "Pontuação" do
+    regulamento define como a classificação. A cadeia do regulamento
+    (vitórias → saldo de sets → saldo de pontos → pontos marcados →
+    sorteio) só entra como desempate SECUNDÁRIO, quando duas ou mais
+    equipes empatam em pontos de torneio.
+
+    Equipes que seguem empatadas depois de esgotar toda a cadeia (pontos
+    de torneio E vitórias E saldo de sets E saldo de pontos E pontos
+    marcados, tudo igual) saem marcadas com tied=True — o motor não
+    sorteia, só sinaliza.
     """
 ```
 
