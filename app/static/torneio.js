@@ -86,25 +86,33 @@ function renderPlayer(teamId, p) {
 
 $("tournamentForm").addEventListener("submit", async e => {
   e.preventDefault();
-  await api("/api/tournaments", {
-    method: "POST",
-    body: JSON.stringify({
-      name: $("tournamentNameInput").value,
-      start_date: $("tournamentStart").value,
-      end_date: $("tournamentEnd").value,
-    }),
-  });
-  await loadActiveTournament();
+  try {
+    await api("/api/tournaments", {
+      method: "POST",
+      body: JSON.stringify({
+        name: $("tournamentNameInput").value,
+        start_date: $("tournamentStart").value,
+        end_date: $("tournamentEnd").value,
+      }),
+    });
+    await loadActiveTournament();
+  } catch (err) {
+    toast(err.message);
+  }
 });
 
 $("teamForm").addEventListener("submit", async e => {
   e.preventDefault();
-  await api(`/api/tournaments/${tournamentId}/teams`, {
-    method: "POST",
-    body: JSON.stringify({ code: $("teamCode").value }),
-  });
-  $("teamCode").value = "";
-  await loadState();
+  try {
+    await api(`/api/tournaments/${tournamentId}/teams`, {
+      method: "POST",
+      body: JSON.stringify({ code: $("teamCode").value }),
+    });
+    $("teamCode").value = "";
+    await loadState();
+  } catch (err) {
+    toast(err.message);
+  }
 });
 
 $("teams").addEventListener("submit", async e => {
@@ -115,14 +123,14 @@ $("teams").addEventListener("submit", async e => {
   const name = input.value.trim();
   if (!name) return;
 
-  const players = await api("/api/players");
-  const match = players.find(p => p.name.toLowerCase() === name.toLowerCase());
-  if (!match) {
-    toast("Jogador não encontrado — cadastre primeiro na pelada");
-    return;
-  }
-
   try {
+    const players = await api("/api/players");
+    const match = players.find(p => p.name.toLowerCase() === name.toLowerCase());
+    if (!match) {
+      toast("Jogador não encontrado — cadastre primeiro na pelada");
+      return;
+    }
+
     await api(`/api/teams/${teamId}/players`, {
       method: "POST",
       body: JSON.stringify({ player_id: match.id }),
@@ -160,4 +168,4 @@ $("teams").addEventListener("click", async e => {
   }
 });
 
-loadActiveTournament();
+loadActiveTournament().catch(err => toast(err.message));
