@@ -50,6 +50,20 @@
       <div id="playerPool" class="player-grid"></div>
       <button id="formTeamsBtn" class="primary">Sortear times</button>
     </section>
+
+    <section id="matchesSection" class="panel hidden">
+      <h2>Jogos</h2>
+      <form id="matchForm" class="inline">
+        <select id="matchTeamA" required></select>
+        <span>×</span>
+        <select id="matchTeamB" required></select>
+        <input id="matchScheduledAt" type="datetime-local" required>
+        <input id="matchCourt" placeholder="Quadra (opcional)">
+        <label><input type="checkbox" id="matchIsFinal"> Final</label>
+        <button class="primary">+ Jogo</button>
+      </form>
+      <div id="matches"></div>
+    </section>
   </main>
 </div>
 <div id="toast"></div>

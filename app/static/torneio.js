@@ -41,14 +41,17 @@ async function loadActiveTournament() {
     $("newTournament").classList.add("hidden");
     $("tournamentPanel").classList.remove("hidden");
     $("formTeamsSection").classList.remove("hidden");
+    $("matchesSection").classList.remove("hidden");
     await loadState();
     await loadPlayerPool();
+    await loadMatches();
   } else {
     tournamentId = null;
     $("tournamentName").textContent = "Nenhum torneio ativo";
     $("newTournament").classList.remove("hidden");
     $("tournamentPanel").classList.add("hidden");
     $("formTeamsSection").classList.add("hidden");
+    $("matchesSection").classList.add("hidden");
   }
 }
 
@@ -61,6 +64,9 @@ async function loadState() {
   $("formTeamsBtn").title = anyOccupied
     ? "Remova os jogadores dos times antes de sortear de novo"
     : "";
+
+  populateTeamSelect($("matchTeamA"), state.teams);
+  populateTeamSelect($("matchTeamB"), state.teams);
 }
 
 function renderTeam(team) {
@@ -253,6 +259,89 @@ $("formTeamsBtn").addEventListener("click", async () => {
   } catch (err) {
     toast(err.message);
     await loadState();
+  }
+});
+
+function populateTeamSelect(select, teams) {
+  const previous = select.value;
+  select.innerHTML = teams.map(t => `<option value="${t.id}">${esc(t.code)}</option>`).join("");
+  if (teams.some(t => String(t.id) === previous)) select.value = previous;
+}
+
+async function loadMatches() {
+  const matches = await api(`/api/tournaments/${tournamentId}/matches`);
+  renderMatches(matches);
+}
+
+function renderMatches(matches) {
+  const next = matches.find(m => m.status !== "encerrado");
+  $("matches").innerHTML = matches.map(m => renderMatch(m, next && m.id === next.id)).join("");
+}
+
+function renderMatch(m, isNext) {
+  const when = new Date(m.scheduled_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  return `
+    <div class="player ${isNext ? "status-arrived" : ""}" data-match-id="${m.id}">
+      <div class="info">
+        <div class="name">
+          ${esc(m.team_a_code)} × ${esc(m.team_b_code)}
+          ${m.is_final ? '<span class="badge wait">Final</span>' : ""}
+        </div>
+        <div class="muted">${when}${m.court ? " · " + esc(m.court) : ""} · ${m.status}</div>
+      </div>
+      <div class="actions">
+        ${m.status === "agendado" ? `<button data-action="start" data-match-id="${m.id}">Iniciar</button>` : ""}
+        ${m.status === "em_andamento" ? `<button data-action="finish" data-match-id="${m.id}">Encerrar</button>` : ""}
+        <button class="danger" data-action="remove-match" data-match-id="${m.id}">Remover</button>
+      </div>
+    </div>
+  `;
+}
+
+$("matchForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await api(`/api/tournaments/${tournamentId}/matches`, {
+      method: "POST",
+      body: JSON.stringify({
+        team_a_id: Number($("matchTeamA").value),
+        team_b_id: Number($("matchTeamB").value),
+        scheduled_at: $("matchScheduledAt").value,
+        court: $("matchCourt").value || null,
+        is_final: $("matchIsFinal").checked,
+      }),
+    });
+    $("matchScheduledAt").value = "";
+    $("matchCourt").value = "";
+    $("matchIsFinal").checked = false;
+    await loadMatches();
+  } catch (err) {
+    toast(err.message);
+  }
+});
+
+$("matches").addEventListener("click", async e => {
+  const btn = e.target.closest("button[data-action]");
+  if (!btn) return;
+  const { action, matchId } = btn.dataset;
+
+  try {
+    if (action === "start") {
+      await api(`/api/tournaments/${tournamentId}/matches/${matchId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "em_andamento" }),
+      });
+    } else if (action === "finish") {
+      await api(`/api/tournaments/${tournamentId}/matches/${matchId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "encerrado" }),
+      });
+    } else if (action === "remove-match") {
+      await api(`/api/tournaments/${tournamentId}/matches/${matchId}`, { method: "DELETE" });
+    }
+    await loadMatches();
+  } catch (err) {
+    toast(err.message);
   }
 });
 
