@@ -45,3 +45,7 @@ class TeamPlayerAdd(BaseModel):
 class TeamPlayerUpdate(BaseModel):
     role: str | None = None
     is_captain: bool | None = None
+
+
+class TeamFormRequest(BaseModel):
+    player_ids: list[int]

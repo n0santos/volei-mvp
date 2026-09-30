@@ -7,8 +7,11 @@ from app.database import Base
 from app.tournament import (
     create_tournament, active_tournament, create_team, tournament_state,
     add_team_player, update_team_player, remove_team_player,
+    form_tournament_teams,
 )
-from app.schemas import TournamentCreate, TeamCreate, TeamPlayerAdd, TeamPlayerUpdate
+from app.schemas import (
+    TournamentCreate, TeamCreate, TeamPlayerAdd, TeamPlayerUpdate, TeamFormRequest,
+)
 from app.models import Player
 
 
@@ -184,3 +187,69 @@ def test_update_missing_team_player_raises_404():
 
     with pytest.raises(HTTPException):
         update_team_player(team.id, player.id, TeamPlayerUpdate(role="reserva"), db)
+
+
+def make_tournament_with_teams(db, codes):
+    t = create_tournament(
+        TournamentCreate(name="Torneio", start_date=date(2026, 11, 28), end_date=date(2026, 11, 29)), db
+    )
+    teams = [create_team(t.id, TeamCreate(code=code), db) for code in codes]
+    return t, teams
+
+
+def test_form_teams_distributes_players_and_marks_them_titular():
+    db = make_db()
+    t, teams = make_tournament_with_teams(db, ["A", "B"])
+    players = [Player(name=f"P{i}", score=70 - i, gender="X") for i in range(6)]
+    db.add_all(players)
+    db.commit()
+
+    result = form_tournament_teams(
+        t.id, TeamFormRequest(player_ids=[pl.id for pl in players]), db
+    )
+
+    total_players = sum(len(team["players"]) for team in result["teams"])
+    assert total_players == 6
+    for team in result["teams"]:
+        assert all(pl["role"] == "titular" for pl in team["players"])
+
+
+def test_form_tournament_teams_requires_at_least_two_teams():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, teams = make_tournament_with_teams(db, ["A"])
+    player = Player(name="Solo", score=70, gender="X")
+    db.add(player)
+    db.commit()
+
+    with pytest.raises(HTTPException):
+        form_tournament_teams(t.id, TeamFormRequest(player_ids=[player.id]), db)
+
+
+def test_form_teams_refuses_when_a_team_already_has_a_player():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, teams = make_tournament_with_teams(db, ["A", "B"])
+    p1 = Player(name="Already", score=70, gender="X")
+    p2 = Player(name="New", score=70, gender="X")
+    db.add_all([p1, p2])
+    db.commit()
+    add_team_player(teams[0].id, TeamPlayerAdd(player_id=p1.id), db)
+
+    with pytest.raises(HTTPException):
+        form_tournament_teams(t.id, TeamFormRequest(player_ids=[p2.id]), db)
+
+
+def test_form_teams_404s_on_missing_player():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, teams = make_tournament_with_teams(db, ["A", "B"])
+
+    with pytest.raises(HTTPException):
+        form_tournament_teams(t.id, TeamFormRequest(player_ids=[999]), db)
