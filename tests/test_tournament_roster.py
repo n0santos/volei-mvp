@@ -253,3 +253,34 @@ def test_form_teams_404s_on_missing_player():
 
     with pytest.raises(HTTPException):
         form_tournament_teams(t.id, TeamFormRequest(player_ids=[999]), db)
+
+
+def test_form_teams_requires_at_least_one_player_per_team():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, teams = make_tournament_with_teams(db, ["A", "B"])
+    p1 = Player(name="P1", score=70, gender="X")
+    db.add(p1)
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        form_tournament_teams(t.id, TeamFormRequest(player_ids=[p1.id]), db)
+    assert exc_info.value.status_code == 400
+
+
+def test_form_teams_rejects_duplicate_player_ids():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, teams = make_tournament_with_teams(db, ["A", "B"])
+    p1 = Player(name="P1", score=70, gender="X")
+    p2 = Player(name="P2", score=70, gender="X")
+    db.add_all([p1, p2])
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        form_tournament_teams(t.id, TeamFormRequest(player_ids=[p1.id, p1.id]), db)
+    assert exc_info.value.status_code == 400

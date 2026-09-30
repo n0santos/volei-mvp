@@ -186,6 +186,12 @@ def form_tournament_teams(tournament_id: int, data: TeamFormRequest, db: DBSessi
     if occupied:
         raise HTTPException(409, "Times já têm jogadores — remova antes de sortear de novo")
 
+    if len(data.player_ids) < len(teams):
+        raise HTTPException(400, "É preciso pelo menos um jogador por time")
+
+    if len(set(data.player_ids)) != len(data.player_ids):
+        raise HTTPException(400, "player_ids não pode ter jogador repetido")
+
     players = []
     for player_id in data.player_ids:
         player = db.get(Player, player_id)
