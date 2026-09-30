@@ -38,3 +38,74 @@ def match_result(sets):
         "points_a": points_a,
         "points_b": points_b,
     }
+
+
+def _new_team_row(name):
+    return {
+        "team": name,
+        "wins": 0,
+        "losses": 0,
+        "sets_for": 0,
+        "sets_against": 0,
+        "points_for": 0,
+        "points_against": 0,
+        "tournament_points": 0,
+    }
+
+
+def _standings_sort_key(row):
+    return (
+        -row["tournament_points"],
+        -row["wins"],
+        -row["sets_balance"],
+        -row["points_balance"],
+        -row["points_for"],
+    )
+
+
+def compute_standings(matches):
+    teams = {}
+
+    def row(name):
+        return teams.setdefault(name, _new_team_row(name))
+
+    for match in matches:
+        result = match_result(match.sets)
+        a = row(match.team_a)
+        b = row(match.team_b)
+
+        a["sets_for"] += result["sets_a"]
+        a["sets_against"] += result["sets_b"]
+        a["points_for"] += result["points_a"]
+        a["points_against"] += result["points_b"]
+
+        b["sets_for"] += result["sets_b"]
+        b["sets_against"] += result["sets_a"]
+        b["points_for"] += result["points_b"]
+        b["points_against"] += result["points_a"]
+
+        if result["winner"] == "A":
+            a["wins"] += 1
+            b["losses"] += 1
+        elif result["winner"] == "B":
+            b["wins"] += 1
+            a["losses"] += 1
+
+        a["tournament_points"] += match_points(result["sets_a"], result["sets_b"])
+        b["tournament_points"] += match_points(result["sets_b"], result["sets_a"])
+
+    standings = list(teams.values())
+    for s in standings:
+        s["sets_balance"] = s["sets_for"] - s["sets_against"]
+        s["points_balance"] = s["points_for"] - s["points_against"]
+
+    standings.sort(key=_standings_sort_key)
+
+    for s in standings:
+        s["tied"] = False
+    for i in range(len(standings) - 1):
+        if _standings_sort_key(standings[i]) == _standings_sort_key(standings[i + 1]):
+            standings[i]["tied"] = True
+            standings[i + 1]["tied"] = True
+
+    return standings
