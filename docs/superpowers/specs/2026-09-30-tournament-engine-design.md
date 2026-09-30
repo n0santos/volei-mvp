@@ -110,7 +110,7 @@ def compute_standings(matches) -> list[dict]:
 - 17×17 não termina (`is_set_over` False); 19×17 termina (`is_set_over` True,
   `set_winner` "A").
 - 14×14 no 3º set (alvo 15) não termina; segue até diferença de 2 (ex.:
-  16×14 ainda não, 17×15 termina).
+  15×14 ainda não, 16×14 termina).
 - `match_points`: 2×0=3, 2×1=2, 1×2=1, 0×2=0.
 - `match_result` com partida incompleta (só 1 set decidido) retorna
   `winner=None`.
