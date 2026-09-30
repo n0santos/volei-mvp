@@ -290,6 +290,7 @@ function renderMatch(m, isNext) {
         <div class="muted">${when}${m.court ? " · " + esc(m.court) : ""} · ${m.status}</div>
       </div>
       <div class="actions">
+        <a href="/torneio/partidas/${m.id}"><button>Placar</button></a>
         ${m.status === "agendado" ? `<button data-action="start" data-match-id="${m.id}">Iniciar</button>` : ""}
         ${m.status === "em_andamento" ? `<button data-action="finish" data-match-id="${m.id}">Encerrar</button>` : ""}
         <button class="danger" data-action="remove-match" data-match-id="${m.id}">Remover</button>

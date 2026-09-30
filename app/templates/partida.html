@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Placar — Vôlei</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="inner">
+    <div>
+      <h1>🏐 Placar</h1>
+      <div id="matchTitle" class="muted">Carregando…</div>
+    </div>
+    <div class="actions">
+      <a href="/torneio"><button>← Jogos</button></a>
+    </div>
+  </div>
+</header>
+<div class="app">
+  <main>
+    <section class="panel scoreboard">
+      <div id="setsHistory" class="sets-history"></div>
+      <div id="currentSetLabel" class="muted"></div>
+      <div class="score-row">
+        <div class="score-side">
+          <div id="teamALabel" class="muted"></div>
+          <div id="scoreA" class="score-value">0</div>
+          <div class="inline">
+            <button class="danger score-btn" data-team="a" data-delta="-1">-1</button>
+            <button class="primary score-btn" data-team="a" data-delta="1">+1</button>
+          </div>
+        </div>
+        <div class="score-side">
+          <div id="teamBLabel" class="muted"></div>
+          <div id="scoreB" class="score-value">0</div>
+          <div class="inline">
+            <button class="danger score-btn" data-team="b" data-delta="-1">-1</button>
+            <button class="primary score-btn" data-team="b" data-delta="1">+1</button>
+          </div>
+        </div>
+      </div>
+      <button id="closeSetBtn" class="primary" disabled>Fechar set</button>
+      <div id="resultBanner" class="muted hidden"></div>
+    </section>
+  </main>
+</div>
+<div id="toast"></div>
+<script src="/static/partida.js"></script>
+</body>
+</html>

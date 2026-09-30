@@ -71,6 +71,11 @@ def torneio_page():
     return (Path(__file__).parent / "templates" / "torneio.html").read_text()
 
 
+@app.get("/torneio/partidas/{match_id}", response_class=HTMLResponse)
+def partida_page(match_id: int):
+    return (Path(__file__).parent / "templates" / "partida.html").read_text()
+
+
 @app.get("/api/players")
 def players(db: DBSession = Depends(get_db)):
     return db.execute(select(Player).where(Player.active == True).order_by(Player.name)).scalars().all()
