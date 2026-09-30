@@ -236,8 +236,10 @@ $("selectAllPlayers").addEventListener("change", e => {
 });
 
 $("formTeamsBtn").addEventListener("click", async () => {
+  $("formTeamsBtn").disabled = true;
   if (selectedPoolIds.size === 0) {
     toast("Selecione pelo menos um jogador");
+    $("formTeamsBtn").disabled = false;
     return;
   }
   try {
@@ -250,6 +252,7 @@ $("formTeamsBtn").addEventListener("click", async () => {
     await loadState();
   } catch (err) {
     toast(err.message);
+    await loadState();
   }
 });
 

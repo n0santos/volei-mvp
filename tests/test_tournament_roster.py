@@ -224,8 +224,9 @@ def test_form_tournament_teams_requires_at_least_two_teams():
     db.add(player)
     db.commit()
 
-    with pytest.raises(HTTPException):
+    with pytest.raises(HTTPException) as exc_info:
         form_tournament_teams(t.id, TeamFormRequest(player_ids=[player.id]), db)
+    assert exc_info.value.status_code == 400
 
 
 def test_form_teams_refuses_when_a_team_already_has_a_player():
@@ -240,8 +241,9 @@ def test_form_teams_refuses_when_a_team_already_has_a_player():
     db.commit()
     add_team_player(teams[0].id, TeamPlayerAdd(player_id=p1.id), db)
 
-    with pytest.raises(HTTPException):
+    with pytest.raises(HTTPException) as exc_info:
         form_tournament_teams(t.id, TeamFormRequest(player_ids=[p2.id]), db)
+    assert exc_info.value.status_code == 409
 
 
 def test_form_teams_404s_on_missing_player():
@@ -250,9 +252,13 @@ def test_form_teams_404s_on_missing_player():
 
     db = make_db()
     t, teams = make_tournament_with_teams(db, ["A", "B"])
+    known = Player(name="Known", score=70, gender="X")
+    db.add(known)
+    db.commit()
 
-    with pytest.raises(HTTPException):
-        form_tournament_teams(t.id, TeamFormRequest(player_ids=[999]), db)
+    with pytest.raises(HTTPException) as exc_info:
+        form_tournament_teams(t.id, TeamFormRequest(player_ids=[known.id, 999]), db)
+    assert exc_info.value.status_code == 404
 
 
 def test_form_teams_requires_at_least_one_player_per_team():
