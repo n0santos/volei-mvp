@@ -103,3 +103,16 @@ class TeamPlayer(Base):
     is_captain: Mapped[bool] = mapped_column(Boolean, default=False)
 
     player: Mapped["Player"] = relationship()
+
+
+class TournamentMatch(Base):
+    __tablename__ = "tournament_matches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"))
+    team_a_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    team_b_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime)
+    court: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="agendado")  # agendado/em_andamento/encerrado
+    is_final: Mapped[bool] = mapped_column(Boolean, default=False)

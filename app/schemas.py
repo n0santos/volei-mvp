@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -49,3 +49,20 @@ class TeamPlayerUpdate(BaseModel):
 
 class TeamFormRequest(BaseModel):
     player_ids: list[int]
+
+
+class TournamentMatchCreate(BaseModel):
+    team_a_id: int
+    team_b_id: int
+    scheduled_at: datetime
+    court: str | None = None
+    is_final: bool = False
+
+
+class TournamentMatchUpdate(BaseModel):
+    team_a_id: int | None = None
+    team_b_id: int | None = None
+    scheduled_at: datetime | None = None
+    court: str | None = None
+    status: str | None = None
+    is_final: bool | None = None
