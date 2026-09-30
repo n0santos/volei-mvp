@@ -61,3 +61,135 @@ def test_tournament_match_defaults():
     assert m.status == "agendado"
     assert m.is_final is False
     assert m.court is None
+
+
+from app.tournament import create_match, list_matches, update_match, delete_match
+from app.schemas import TournamentMatchCreate, TournamentMatchUpdate
+
+
+def test_create_and_list_matches():
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+
+    create_match(
+        t.id,
+        TournamentMatchCreate(team_a_id=team_a.id, team_b_id=team_b.id, scheduled_at=datetime(2026, 11, 28, 13, 0)),
+        db,
+    )
+
+    matches = list_matches(t.id, db)
+    assert len(matches) == 1
+    assert matches[0]["team_a_code"] == "A"
+    assert matches[0]["team_b_code"] == "B"
+    assert matches[0]["status"] == "agendado"
+
+
+def test_matches_are_listed_in_scheduled_order():
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+
+    create_match(
+        t.id,
+        TournamentMatchCreate(team_a_id=team_a.id, team_b_id=team_b.id, scheduled_at=datetime(2026, 11, 28, 15, 0)),
+        db,
+    )
+    create_match(
+        t.id,
+        TournamentMatchCreate(team_a_id=team_a.id, team_b_id=team_b.id, scheduled_at=datetime(2026, 11, 28, 13, 0)),
+        db,
+    )
+
+    matches = list_matches(t.id, db)
+    scheduled_times = [m["scheduled_at"] for m in matches]
+    assert scheduled_times == sorted(scheduled_times)
+
+
+def test_create_match_rejects_same_team_twice():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+
+    with pytest.raises(HTTPException):
+        create_match(
+            t.id,
+            TournamentMatchCreate(
+                team_a_id=team_a.id, team_b_id=team_a.id, scheduled_at=datetime(2026, 11, 28, 13, 0)
+            ),
+            db,
+        )
+
+
+def test_create_match_404s_on_team_from_another_tournament():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t1, team_a, _team_b = make_tournament_and_teams(db)
+    _t2, _other_a, other_b = make_tournament_and_teams(db)
+
+    with pytest.raises(HTTPException):
+        create_match(
+            t1.id,
+            TournamentMatchCreate(
+                team_a_id=team_a.id, team_b_id=other_b.id, scheduled_at=datetime(2026, 11, 28, 13, 0)
+            ),
+            db,
+        )
+
+
+def test_update_match_status():
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = create_match(
+        t.id,
+        TournamentMatchCreate(team_a_id=team_a.id, team_b_id=team_b.id, scheduled_at=datetime(2026, 11, 28, 13, 0)),
+        db,
+    )
+
+    updated = update_match(t.id, m.id, TournamentMatchUpdate(status="em_andamento"), db)
+    assert updated.status == "em_andamento"
+
+
+def test_update_match_rejects_invalid_status():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = create_match(
+        t.id,
+        TournamentMatchCreate(team_a_id=team_a.id, team_b_id=team_b.id, scheduled_at=datetime(2026, 11, 28, 13, 0)),
+        db,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        update_match(t.id, m.id, TournamentMatchUpdate(status="xyz"), db)
+    assert exc_info.value.status_code == 400
+
+
+def test_delete_match():
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = create_match(
+        t.id,
+        TournamentMatchCreate(team_a_id=team_a.id, team_b_id=team_b.id, scheduled_at=datetime(2026, 11, 28, 13, 0)),
+        db,
+    )
+
+    delete_match(t.id, m.id, db)
+
+    assert list_matches(t.id, db) == []
+
+
+def test_update_missing_match_raises_404():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, _team_a, _team_b = make_tournament_and_teams(db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        update_match(t.id, 999, TournamentMatchUpdate(status="encerrado"), db)
+    assert exc_info.value.status_code == 404
