@@ -63,8 +63,16 @@ def test_tournament_match_defaults():
     assert m.court is None
 
 
-from app.tournament_matches import create_match, list_matches, update_match, delete_match
-from app.schemas import TournamentMatchCreate, TournamentMatchUpdate
+from app.tournament_matches import (
+    create_match,
+    list_matches,
+    update_match,
+    delete_match,
+    get_scoreboard,
+    add_point,
+    close_set,
+)
+from app.schemas import TournamentMatchCreate, TournamentMatchUpdate, SetPointRequest
 
 
 def test_create_and_list_matches():
@@ -233,3 +241,128 @@ def test_set_result_defaults():
     assert s.points_a == 0
     assert s.points_b == 0
     assert s.closed is False
+
+
+def make_match(db, tournament_id, team_a_id, team_b_id):
+    return create_match(
+        tournament_id,
+        TournamentMatchCreate(team_a_id=team_a_id, team_b_id=team_b_id, scheduled_at=datetime(2026, 11, 28, 13, 0)),
+        db,
+    )
+
+
+def test_first_point_creates_set_one():
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = make_match(db, t.id, team_a.id, team_b.id)
+
+    add_point(t.id, m.id, SetPointRequest(team="a", delta=1), db)
+
+    board = get_scoreboard(t.id, m.id, db)
+    assert len(board["sets"]) == 1
+    assert board["sets"][0]["set_number"] == 1
+    assert board["sets"][0]["points_a"] == 1
+    assert board["current_set"]["points_a"] == 1
+    assert board["current_set"]["target"] == 18
+    assert board["current_set"]["is_over"] is False
+
+
+def test_point_cannot_go_negative():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = make_match(db, t.id, team_a.id, team_b.id)
+
+    with pytest.raises(HTTPException) as exc_info:
+        add_point(t.id, m.id, SetPointRequest(team="a", delta=-1), db)
+    assert exc_info.value.status_code == 400
+
+
+def test_close_set_requires_set_to_be_over():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = make_match(db, t.id, team_a.id, team_b.id)
+    add_point(t.id, m.id, SetPointRequest(team="a", delta=1), db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        close_set(t.id, m.id, db)
+    assert exc_info.value.status_code == 400
+
+
+def test_close_set_and_start_next():
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = make_match(db, t.id, team_a.id, team_b.id)
+
+    for _ in range(18):
+        add_point(t.id, m.id, SetPointRequest(team="a", delta=1), db)
+
+    closed = close_set(t.id, m.id, db)
+    assert closed["closed"] is True
+    assert closed["set_number"] == 1
+
+    add_point(t.id, m.id, SetPointRequest(team="b", delta=1), db)
+    board = get_scoreboard(t.id, m.id, db)
+    assert board["current_set"]["set_number"] == 2
+    assert board["current_set"]["points_b"] == 1
+
+
+def test_match_finishes_and_status_updates_after_two_sets():
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = make_match(db, t.id, team_a.id, team_b.id)
+
+    for _ in range(18):
+        add_point(t.id, m.id, SetPointRequest(team="a", delta=1), db)
+    close_set(t.id, m.id, db)
+
+    for _ in range(18):
+        add_point(t.id, m.id, SetPointRequest(team="a", delta=1), db)
+    close_set(t.id, m.id, db)
+
+    board = get_scoreboard(t.id, m.id, db)
+    assert board["result"]["winner"] == "A"
+    assert board["result"]["sets_a"] == 2
+    assert board["current_set"] is None
+
+    db.refresh(m)
+    assert m.status == "encerrado"
+
+
+def test_cannot_add_point_after_match_decided():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = make_match(db, t.id, team_a.id, team_b.id)
+
+    for _ in range(18):
+        add_point(t.id, m.id, SetPointRequest(team="a", delta=1), db)
+    close_set(t.id, m.id, db)
+    for _ in range(18):
+        add_point(t.id, m.id, SetPointRequest(team="a", delta=1), db)
+    close_set(t.id, m.id, db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        add_point(t.id, m.id, SetPointRequest(team="a", delta=1), db)
+    assert exc_info.value.status_code == 400
+
+
+def test_invalid_team_and_delta_rejected():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = make_match(db, t.id, team_a.id, team_b.id)
+
+    with pytest.raises(HTTPException):
+        add_point(t.id, m.id, SetPointRequest(team="c", delta=1), db)
+    with pytest.raises(HTTPException):
+        add_point(t.id, m.id, SetPointRequest(team="a", delta=2), db)

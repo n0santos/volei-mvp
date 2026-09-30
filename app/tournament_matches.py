@@ -3,8 +3,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
 from .database import get_db
-from .models import Team, TournamentMatch
-from .schemas import TournamentMatchCreate, TournamentMatchUpdate
+from .models import Team, TournamentMatch, TournamentSetResult
+from .schemas import TournamentMatchCreate, TournamentMatchUpdate, SetPointRequest
+from .services.tournament_engine import SET_TARGETS, is_set_over, match_result
 from .tournament import get_tournament
 
 router = APIRouter()
@@ -120,3 +121,115 @@ def delete_match(tournament_id: int, match_id: int, db: DBSession = Depends(get_
     db.delete(m)
     db.commit()
     return {"ok": True}
+
+
+def get_open_set(db, match_id):
+    return db.execute(
+        select(TournamentSetResult).where(
+            TournamentSetResult.match_id == match_id,
+            TournamentSetResult.closed == False,
+        )
+    ).scalar_one_or_none()
+
+
+def get_closed_sets(db, match_id):
+    return db.execute(
+        select(TournamentSetResult)
+        .where(TournamentSetResult.match_id == match_id, TournamentSetResult.closed == True)
+        .order_by(TournamentSetResult.set_number)
+    ).scalars().all()
+
+
+def decided_result(db, match_id):
+    closed = get_closed_sets(db, match_id)
+    if len(closed) < 2:
+        return None
+    result = match_result([(s.points_a, s.points_b) for s in closed])
+    return result if result["winner"] else None
+
+
+def serialize_set(s):
+    return {"set_number": s.set_number, "points_a": s.points_a, "points_b": s.points_b, "closed": s.closed}
+
+
+@router.get("/api/tournaments/{tournament_id}/matches/{match_id}/scoreboard")
+def get_scoreboard(tournament_id: int, match_id: int, db: DBSession = Depends(get_db)):
+    m = get_match(db, tournament_id, match_id)
+    all_sets = db.execute(
+        select(TournamentSetResult)
+        .where(TournamentSetResult.match_id == match_id)
+        .order_by(TournamentSetResult.set_number)
+    ).scalars().all()
+    open_set = next((s for s in all_sets if not s.closed), None)
+    result = decided_result(db, match_id)
+
+    current_set = None
+    if open_set and result is None:
+        target = SET_TARGETS.get(open_set.set_number, 15)
+        current_set = {
+            **serialize_set(open_set),
+            "target": target,
+            "is_over": is_set_over(open_set.points_a, open_set.points_b, target),
+        }
+
+    return {
+        "match": {"id": m.id, "status": m.status, "is_final": m.is_final},
+        "sets": [serialize_set(s) for s in all_sets],
+        "current_set": current_set,
+        "result": result,
+    }
+
+
+@router.post("/api/tournaments/{tournament_id}/matches/{match_id}/scoreboard/point")
+def add_point(tournament_id: int, match_id: int, data: SetPointRequest, db: DBSession = Depends(get_db)):
+    get_match(db, tournament_id, match_id)
+
+    if data.team not in ("a", "b"):
+        raise HTTPException(400, "team precisa ser 'a' ou 'b'")
+    if data.delta not in (1, -1):
+        raise HTTPException(400, "delta precisa ser 1 ou -1")
+
+    if decided_result(db, match_id) is not None:
+        raise HTTPException(400, "Partida já está decidida")
+
+    open_set = get_open_set(db, match_id)
+    if not open_set:
+        closed_count = len(get_closed_sets(db, match_id))
+        next_number = closed_count + 1
+        if next_number > 3:
+            raise HTTPException(400, "Partida já teve 3 sets")
+        open_set = TournamentSetResult(match_id=match_id, set_number=next_number)
+        db.add(open_set)
+        db.flush()
+
+    field = "points_a" if data.team == "a" else "points_b"
+    new_value = getattr(open_set, field) + data.delta
+    if new_value < 0:
+        raise HTTPException(400, "Placar não pode ficar negativo")
+    setattr(open_set, field, new_value)
+
+    db.commit()
+    db.refresh(open_set)
+    return serialize_set(open_set)
+
+
+@router.post("/api/tournaments/{tournament_id}/matches/{match_id}/scoreboard/close-set")
+def close_set(tournament_id: int, match_id: int, db: DBSession = Depends(get_db)):
+    m = get_match(db, tournament_id, match_id)
+    open_set = get_open_set(db, match_id)
+    if not open_set:
+        raise HTTPException(400, "Não há set em aberto")
+
+    target = SET_TARGETS.get(open_set.set_number, 15)
+    if not is_set_over(open_set.points_a, open_set.points_b, target):
+        raise HTTPException(400, "O set ainda não terminou")
+
+    open_set.closed = True
+    db.flush()
+
+    if decided_result(db, match_id) is not None:
+        m.status = "encerrado"
+
+    db.commit()
+    db.refresh(open_set)
+    return serialize_set(open_set)
