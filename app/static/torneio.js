@@ -27,6 +27,12 @@ function esc(s) {
   }[c]));
 }
 
+// Lowercase + strip accents, so "cecilia" finds "Cecília" — useful with ~60
+// names on the pre-list and phone keyboards that don't default to accents.
+function normalize(s) {
+  return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
 async function loadActiveTournament() {
   const t = await api("/api/tournaments/active");
   if (t) {
@@ -125,11 +131,16 @@ $("teams").addEventListener("submit", async e => {
 
   try {
     const players = await api("/api/players");
-    const match = players.find(p => p.name.toLowerCase() === name.toLowerCase());
-    if (!match) {
+    const matches = players.filter(p => normalize(p.name).includes(normalize(name)));
+    if (matches.length === 0) {
       toast("Jogador não encontrado — cadastre primeiro na pelada");
       return;
     }
+    if (matches.length > 1) {
+      toast("Mais de um jogador encontrado — digite mais do nome");
+      return;
+    }
+    const match = matches[0];
 
     await api(`/api/teams/${teamId}/players`, {
       method: "POST",

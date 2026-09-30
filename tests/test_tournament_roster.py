@@ -120,6 +120,20 @@ def test_adding_same_player_twice_raises_conflict():
         add_team_player(team.id, TeamPlayerAdd(player_id=player.id), db)
 
 
+def test_adding_player_already_on_another_team_of_same_tournament_raises_conflict():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team_a, player = make_team_with_player(db)
+    team_b = create_team(team_a.tournament_id, TeamCreate(code="B"), db)
+    add_team_player(team_a.id, TeamPlayerAdd(player_id=player.id), db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        add_team_player(team_b.id, TeamPlayerAdd(player_id=player.id), db)
+    assert exc_info.value.detail == "Jogador já está em outro time deste torneio"
+
+
 def test_marking_a_new_captain_unmarks_the_previous_one():
     db = make_db()
     team, player = make_team_with_player(db)

@@ -102,6 +102,19 @@ def add_team_player(team_id: int, data: TeamPlayerAdd, db: DBSession = Depends(g
     if existing:
         raise HTTPException(409, "Jogador já está no time")
 
+    # No player swaps between teams in this tournament's regulation - a
+    # player already on another team here can't be added to this one either.
+    in_other_team = db.execute(
+        select(TeamPlayer)
+        .join(Team, Team.id == TeamPlayer.team_id)
+        .where(
+            Team.tournament_id == team.tournament_id,
+            TeamPlayer.player_id == data.player_id,
+        )
+    ).scalar_one_or_none()
+    if in_other_team:
+        raise HTTPException(409, "Jogador já está em outro time deste torneio")
+
     tp = TeamPlayer(team_id=team_id, player_id=data.player_id, role=data.role)
     db.add(tp)
     db.commit()
