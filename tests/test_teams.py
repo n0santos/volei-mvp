@@ -14,7 +14,11 @@ def test_balanced_scores():
     a, b, diff = balance_teams(players)
     assert len(a) == 6
     assert len(b) == 6
-    assert diff <= 2
+    # balance_teams draws randomly among splits within MIX_TOLERANCE (10) of the
+    # best cost, by design (see teams.py) - a bound tighter than that tolerance
+    # is inherently flaky. 10 matches the tolerance itself and the bound already
+    # used by test_evenly_splits_a_lopsided_group below.
+    assert diff <= 10
 
 
 def test_gender_adjustment_treats_men_as_stronger():
