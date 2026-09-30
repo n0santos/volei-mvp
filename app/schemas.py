@@ -1,3 +1,5 @@
+from datetime import date
+
 from pydantic import BaseModel
 
 
@@ -23,3 +25,23 @@ class SubstituteRequest(BaseModel):
 class SwapRequest(BaseModel):
     out_player_id: int
     in_player_id: int
+
+
+class TournamentCreate(BaseModel):
+    name: str
+    start_date: date
+    end_date: date
+
+
+class TeamCreate(BaseModel):
+    code: str
+
+
+class TeamPlayerAdd(BaseModel):
+    player_id: int
+    role: str = "titular"
+
+
+class TeamPlayerUpdate(BaseModel):
+    role: str | None = None
+    is_captain: bool | None = None
