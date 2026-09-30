@@ -246,6 +246,7 @@ $("formTeamsBtn").addEventListener("click", async () => {
       body: JSON.stringify({ player_ids: Array.from(selectedPoolIds) }),
     });
     selectedPoolIds.clear();
+    renderPlayerPool();
     await loadState();
   } catch (err) {
     toast(err.message);
