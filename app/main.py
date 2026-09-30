@@ -64,6 +64,11 @@ def index():
     return (Path(__file__).parent / "templates" / "index.html").read_text()
 
 
+@app.get("/torneio", response_class=HTMLResponse)
+def torneio_page():
+    return (Path(__file__).parent / "templates" / "torneio.html").read_text()
+
+
 @app.get("/api/players")
 def players(db: DBSession = Depends(get_db)):
     return db.execute(select(Player).where(Player.active == True).order_by(Player.name)).scalars().all()

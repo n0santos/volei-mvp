@@ -1,0 +1,47 @@
+<!-- app/templates/torneio.html -->
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Modo Torneio — Vôlei</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="inner">
+    <div>
+      <h1>🏆 Torneio</h1>
+      <div id="tournamentName" class="muted">Nenhum torneio ativo</div>
+    </div>
+  </div>
+</header>
+<div class="app">
+  <main>
+    <section id="newTournament" class="panel">
+      <h2>Novo torneio</h2>
+      <form id="tournamentForm" class="inline">
+        <input id="tournamentNameInput" placeholder="Nome do torneio" required>
+        <input id="tournamentStart" type="date" required>
+        <input id="tournamentEnd" type="date" required>
+        <button class="primary">Criar</button>
+      </form>
+    </section>
+
+    <section id="tournamentPanel" class="panel hidden">
+      <h2>Times</h2>
+      <form id="teamForm" class="inline">
+        <input id="teamCode" placeholder="Código do time (ex.: A)" required>
+        <button class="primary">+ Time</button>
+      </form>
+      <div id="teams"></div>
+    </section>
+  </main>
+</div>
+<div id="toast"></div>
+<script src="/static/torneio.js"></script>
+</body>
+</html>
