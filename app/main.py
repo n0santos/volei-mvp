@@ -16,12 +16,14 @@ from .services.selection import select_players, eligible_players, BLOCK_AFTER, S
 from .services.teams import balance_teams
 from .services.fairness import history
 from .tournament import router as tournament_router
+from .tournament_matches import router as tournament_matches_router
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Vôlei MVP")
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 app.include_router(tournament_router)
+app.include_router(tournament_matches_router)
 
 
 @app.get("/__health")

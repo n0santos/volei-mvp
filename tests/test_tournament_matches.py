@@ -63,7 +63,7 @@ def test_tournament_match_defaults():
     assert m.court is None
 
 
-from app.tournament import create_match, list_matches, update_match, delete_match
+from app.tournament_matches import create_match, list_matches, update_match, delete_match
 from app.schemas import TournamentMatchCreate, TournamentMatchUpdate
 
 
