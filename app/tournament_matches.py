@@ -193,6 +193,12 @@ def add_point(tournament_id: int, match_id: int, data: SetPointRequest, db: DBSe
         raise HTTPException(400, "Partida já está decidida")
 
     open_set = get_open_set(db, match_id)
+
+    field = "points_a" if data.team == "a" else "points_b"
+    new_value = (getattr(open_set, field) if open_set else 0) + data.delta
+    if new_value < 0:
+        raise HTTPException(400, "Placar não pode ficar negativo")
+
     if not open_set:
         closed_count = len(get_closed_sets(db, match_id))
         next_number = closed_count + 1
@@ -202,10 +208,6 @@ def add_point(tournament_id: int, match_id: int, data: SetPointRequest, db: DBSe
         db.add(open_set)
         db.flush()
 
-    field = "points_a" if data.team == "a" else "points_b"
-    new_value = getattr(open_set, field) + data.delta
-    if new_value < 0:
-        raise HTTPException(400, "Placar não pode ficar negativo")
     setattr(open_set, field, new_value)
 
     db.commit()
