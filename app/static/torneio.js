@@ -40,18 +40,27 @@ async function loadActiveTournament() {
     $("tournamentName").textContent = `${t.name} (${t.start_date} a ${t.end_date})`;
     $("newTournament").classList.add("hidden");
     $("tournamentPanel").classList.remove("hidden");
+    $("formTeamsSection").classList.remove("hidden");
     await loadState();
+    await loadPlayerPool();
   } else {
     tournamentId = null;
     $("tournamentName").textContent = "Nenhum torneio ativo";
     $("newTournament").classList.remove("hidden");
     $("tournamentPanel").classList.add("hidden");
+    $("formTeamsSection").classList.add("hidden");
   }
 }
 
 async function loadState() {
   const state = await api(`/api/tournaments/${tournamentId}`);
   $("teams").innerHTML = state.teams.map(renderTeam).join("");
+
+  const anyOccupied = state.teams.some(team => team.players.length > 0);
+  $("formTeamsBtn").disabled = anyOccupied;
+  $("formTeamsBtn").title = anyOccupied
+    ? "Remova os jogadores dos times antes de sortear de novo"
+    : "";
 }
 
 function renderTeam(team) {
@@ -173,6 +182,70 @@ $("teams").addEventListener("click", async e => {
         body: JSON.stringify({ is_captain: makeCaptain }),
       });
     }
+    await loadState();
+  } catch (err) {
+    toast(err.message);
+  }
+});
+
+let selectedPoolIds = new Set();
+let allPlayers = [];
+
+async function loadPlayerPool() {
+  allPlayers = await api("/api/players");
+  renderPlayerPool();
+}
+
+function filteredPoolPlayers() {
+  const search = normalize($("playerPoolSearch").value.trim());
+  return allPlayers.filter(p => normalize(p.name).includes(search));
+}
+
+function renderPlayerPool() {
+  $("playerPool").innerHTML = filteredPoolPlayers().map(p => `
+    <label class="player">
+      <div class="info">
+        <div class="name">${esc(p.name)}</div>
+        <div class="muted">${p.gender} · score ${p.score}</div>
+      </div>
+      <input type="checkbox" data-player-id="${p.id}" ${selectedPoolIds.has(p.id) ? "checked" : ""}>
+    </label>
+  `).join("");
+  $("poolCount").textContent = `${selectedPoolIds.size} selecionado(s)`;
+}
+
+$("playerPoolSearch").addEventListener("input", renderPlayerPool);
+
+$("playerPool").addEventListener("change", e => {
+  const checkbox = e.target.closest("input[type=checkbox]");
+  if (!checkbox) return;
+  const id = Number(checkbox.dataset.playerId);
+  if (checkbox.checked) selectedPoolIds.add(id);
+  else selectedPoolIds.delete(id);
+  $("poolCount").textContent = `${selectedPoolIds.size} selecionado(s)`;
+});
+
+$("selectAllPlayers").addEventListener("change", e => {
+  const ids = filteredPoolPlayers().map(p => p.id);
+  if (e.target.checked) {
+    ids.forEach(id => selectedPoolIds.add(id));
+  } else {
+    ids.forEach(id => selectedPoolIds.delete(id));
+  }
+  renderPlayerPool();
+});
+
+$("formTeamsBtn").addEventListener("click", async () => {
+  if (selectedPoolIds.size === 0) {
+    toast("Selecione pelo menos um jogador");
+    return;
+  }
+  try {
+    await api(`/api/tournaments/${tournamentId}/form-teams`, {
+      method: "POST",
+      body: JSON.stringify({ player_ids: Array.from(selectedPoolIds) }),
+    });
+    selectedPoolIds.clear();
     await loadState();
   } catch (err) {
     toast(err.message);
