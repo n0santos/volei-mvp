@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DBSession
@@ -5,7 +7,7 @@ from sqlalchemy.orm import Session as DBSession
 from .database import get_db
 from .models import Team, TournamentMatch, TournamentSetResult
 from .schemas import TournamentMatchCreate, TournamentMatchUpdate, SetPointRequest
-from .services.tournament_engine import SET_TARGETS, is_set_over, match_result
+from .services.tournament_engine import SET_TARGETS, is_set_over, match_result, compute_standings
 from .tournament import get_tournament
 
 router = APIRouter()
@@ -236,3 +238,46 @@ def close_set(tournament_id: int, match_id: int, db: DBSession = Depends(get_db)
     db.commit()
     db.refresh(open_set)
     return serialize_set(open_set)
+
+
+@router.get("/api/tournaments/{tournament_id}/standings")
+def get_standings(tournament_id: int, db: DBSession = Depends(get_db)):
+    get_tournament(db, tournament_id)
+    teams = db.execute(select(Team).where(Team.tournament_id == tournament_id)).scalars().all()
+    team_codes = {team.id: team.code for team in teams}
+
+    finished_matches = db.execute(
+        select(TournamentMatch).where(
+            TournamentMatch.tournament_id == tournament_id,
+            TournamentMatch.status == "encerrado",
+            TournamentMatch.is_final == False,
+        )
+    ).scalars().all()
+
+    engine_matches = []
+    for m in finished_matches:
+        sets = db.execute(
+            select(TournamentSetResult)
+            .where(TournamentSetResult.match_id == m.id, TournamentSetResult.closed == True)
+            .order_by(TournamentSetResult.set_number)
+        ).scalars().all()
+        engine_matches.append(SimpleNamespace(
+            team_a=team_codes.get(m.team_a_id),
+            team_b=team_codes.get(m.team_b_id),
+            sets=[(s.points_a, s.points_b) for s in sets],
+        ))
+
+    standings = compute_standings(engine_matches)
+
+    present_codes = {row["team"] for row in standings}
+    for code in team_codes.values():
+        if code not in present_codes:
+            standings.append({
+                "team": code,
+                "wins": 0, "losses": 0,
+                "sets_for": 0, "sets_against": 0, "sets_balance": 0,
+                "points_for": 0, "points_against": 0, "points_balance": 0,
+                "tournament_points": 0, "tied": False,
+            })
+
+    return standings
