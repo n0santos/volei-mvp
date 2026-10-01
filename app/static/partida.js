@@ -39,7 +39,7 @@ async function findMatch() {
 }
 
 function renderBoard(match, board) {
-  $("matchTitle").textContent = `${esc(match.team_a_code)} × ${esc(match.team_b_code)}`;
+  $("matchTitle").textContent = `${match.team_a_code} × ${match.team_b_code}`;
   $("teamALabel").textContent = match.team_a_code;
   $("teamBLabel").textContent = match.team_b_code;
 
