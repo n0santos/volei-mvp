@@ -366,3 +366,16 @@ def test_invalid_team_and_delta_rejected():
         add_point(t.id, m.id, SetPointRequest(team="c", delta=1), db)
     with pytest.raises(HTTPException):
         add_point(t.id, m.id, SetPointRequest(team="a", delta=2), db)
+
+
+def test_delete_match_also_deletes_its_set_results():
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = make_match(db, t.id, team_a.id, team_b.id)
+
+    add_point(t.id, m.id, SetPointRequest(team="a", delta=1), db)
+    deleted_match_id = m.id
+
+    delete_match(t.id, m.id, db)
+
+    assert db.query(TournamentSetResult).filter_by(match_id=deleted_match_id).count() == 0

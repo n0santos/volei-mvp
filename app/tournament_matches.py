@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DBSession
 
 from .database import get_db
@@ -118,6 +118,7 @@ def update_match(tournament_id: int, match_id: int, data: TournamentMatchUpdate,
 @router.delete("/api/tournaments/{tournament_id}/matches/{match_id}")
 def delete_match(tournament_id: int, match_id: int, db: DBSession = Depends(get_db)):
     m = get_match(db, tournament_id, match_id)
+    db.execute(delete(TournamentSetResult).where(TournamentSetResult.match_id == m.id))
     db.delete(m)
     db.commit()
     return {"ok": True}
