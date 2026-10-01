@@ -379,3 +379,21 @@ def test_delete_match_also_deletes_its_set_results():
     delete_match(t.id, m.id, db)
 
     assert db.query(TournamentSetResult).filter_by(match_id=deleted_match_id).count() == 0
+
+
+def test_set_results_unique_per_match_and_set_number():
+    from sqlalchemy.exc import IntegrityError
+
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = make_match(db, t.id, team_a.id, team_b.id)
+
+    db.add(TournamentSetResult(match_id=m.id, set_number=1))
+    db.commit()
+
+    db.add(TournamentSetResult(match_id=m.id, set_number=1))
+    try:
+        db.commit()
+        assert False, "expected IntegrityError"
+    except IntegrityError:
+        db.rollback()

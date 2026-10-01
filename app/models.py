@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, Date, ForeignKey, Text
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, Date, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -120,6 +120,7 @@ class TournamentMatch(Base):
 
 class TournamentSetResult(Base):
     __tablename__ = "tournament_set_results"
+    __table_args__ = (UniqueConstraint("match_id", "set_number"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("tournament_matches.id"))
