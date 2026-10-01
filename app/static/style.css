@@ -92,6 +92,9 @@ button.danger { background: var(--danger); color: white; border-color: var(--dan
 .actions { display:flex; flex-wrap:wrap; gap:8px; }
 
 .player-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:8px; }
+/* one row per player, full width - used where names run long and sit
+   next to several action buttons (team rosters), so there's room for both */
+.roster-list { display:flex; flex-direction:column; gap:8px; }
 .player {
   border: 1px solid var(--border);
   border-left: 3px solid var(--border);
@@ -101,9 +104,10 @@ button.danger { background: var(--danger); color: white; border-color: var(--dan
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .player .info { min-width:0; }
-.player .name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.player .name { font-weight:600; }
 
 .badge {
   display: inline-block;

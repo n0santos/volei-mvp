@@ -77,7 +77,7 @@ function renderTeam(team) {
   return `
     <div class="panel" data-team-id="${team.id}">
       <h3>Time ${esc(team.code)} <span class="muted">(${team.players.length} jogador(es), ${titulares} titulares)</span></h3>
-      <div class="player-grid">
+      <div class="roster-list">
         ${team.players.map(p => renderPlayer(team.id, p)).join("")}
       </div>
       <form class="inline add-player-form" data-team-id="${team.id}">
