@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from .database import get_db
 from .models import Team, TournamentMatch, TournamentSetResult
-from .schemas import TournamentMatchCreate, TournamentMatchUpdate, SetPointRequest
+from .schemas import TournamentMatchCreate, TournamentMatchUpdate, SetPointRequest, GenerateFinalRequest
 from .services.tournament_engine import SET_TARGETS, is_set_over, match_result, compute_standings
 from .tournament import get_tournament
 
@@ -281,3 +281,52 @@ def get_standings(tournament_id: int, db: DBSession = Depends(get_db)):
             })
 
     return standings
+
+
+@router.post("/api/tournaments/{tournament_id}/generate-final")
+def generate_final(tournament_id: int, data: GenerateFinalRequest, db: DBSession = Depends(get_db)):
+    get_tournament(db, tournament_id)
+
+    existing_final = db.execute(
+        select(TournamentMatch).where(
+            TournamentMatch.tournament_id == tournament_id,
+            TournamentMatch.is_final == True,
+        )
+    ).scalar_one_or_none()
+    if existing_final:
+        raise HTTPException(409, "A final já foi cadastrada")
+
+    group_matches = db.execute(
+        select(TournamentMatch).where(
+            TournamentMatch.tournament_id == tournament_id,
+            TournamentMatch.is_final == False,
+        )
+    ).scalars().all()
+    if not group_matches:
+        raise HTTPException(400, "Nenhum jogo de fase de grupos cadastrado")
+    if any(m.status != "encerrado" for m in group_matches):
+        raise HTTPException(400, "Ainda há jogos da fase de grupos em andamento")
+
+    standings = get_standings(tournament_id, db)
+    if len(standings) < 2:
+        raise HTTPException(400, "É preciso pelo menos 2 times na classificação")
+    if standings[0]["tied"]:
+        raise HTTPException(400, "Empate em 1º — decida manualmente e cadastre a final")
+
+    teams_by_code = {
+        team.code: team.id
+        for team in db.execute(select(Team).where(Team.tournament_id == tournament_id)).scalars()
+    }
+
+    m = TournamentMatch(
+        tournament_id=tournament_id,
+        team_a_id=teams_by_code[standings[0]["team"]],
+        team_b_id=teams_by_code[standings[1]["team"]],
+        scheduled_at=data.scheduled_at,
+        court=data.court,
+        is_final=True,
+    )
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return m

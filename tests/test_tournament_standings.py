@@ -5,7 +5,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
 from app.models import Tournament, Team, TournamentMatch, TournamentSetResult
-from app.tournament_matches import get_standings
+from app.schemas import GenerateFinalRequest
+from app.tournament_matches import get_standings, generate_final
 
 
 def make_db():
@@ -116,6 +117,80 @@ def test_encerrado_match_with_no_closed_sets_does_not_crash_standings():
     by_team = {row["team"]: row for row in standings}
     assert by_team["A"]["tournament_points"] == 0
     assert by_team["B"]["tournament_points"] == 0
+
+
+def test_generate_final_creates_match_from_top_two():
+    db = make_db()
+    t, (team_a, team_b, team_c) = make_tournament_and_teams(db, codes=("A", "B", "C"))
+    make_finished_match(db, t.id, team_a.id, team_b.id, [(18, 10), (18, 12)])  # A beats B: A+3
+    make_finished_match(db, t.id, team_a.id, team_c.id, [(18, 10), (18, 12)])  # A beats C: A+3 -> A=6
+    make_finished_match(db, t.id, team_b.id, team_c.id, [(18, 10), (18, 12)])  # B beats C: B+3 -> B=3, C=0
+
+    final = generate_final(
+        t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db
+    )
+
+    assert final.is_final is True
+    assert final.team_a_id == team_a.id
+    assert final.team_b_id == team_b.id
+
+
+def test_generate_final_rejects_when_group_stage_incomplete():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, (team_a, team_b) = make_tournament_and_teams(db)
+    m = TournamentMatch(
+        tournament_id=t.id, team_a_id=team_a.id, team_b_id=team_b.id,
+        scheduled_at=datetime(2026, 11, 28, 13, 0), status="agendado",
+    )
+    db.add(m)
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
+    assert exc_info.value.status_code == 400
+
+
+def test_generate_final_rejects_when_no_group_matches():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, (team_a, team_b) = make_tournament_and_teams(db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
+    assert exc_info.value.status_code == 400
+
+
+def test_generate_final_rejects_if_final_already_exists():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, (team_a, team_b) = make_tournament_and_teams(db)
+    make_finished_match(db, t.id, team_a.id, team_b.id, [(18, 10), (18, 12)])
+    make_finished_match(db, t.id, team_a.id, team_b.id, [(10, 18), (12, 18)], is_final=True)
+
+    with pytest.raises(HTTPException) as exc_info:
+        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
+    assert exc_info.value.status_code == 409
+
+
+def test_generate_final_rejects_when_first_place_is_tied():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, (team_a, team_b, team_c) = make_tournament_and_teams(db, codes=("A", "B", "C"))
+    make_finished_match(db, t.id, team_a.id, team_c.id, [(18, 10), (18, 10)])
+    make_finished_match(db, t.id, team_b.id, team_c.id, [(18, 10), (18, 10)])
+
+    with pytest.raises(HTTPException) as exc_info:
+        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
+    assert exc_info.value.status_code == 400
 
 
 def test_encerrado_match_with_one_closed_set_does_not_crash_standings():

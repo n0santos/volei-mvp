@@ -71,3 +71,8 @@ class TournamentMatchUpdate(BaseModel):
 class SetPointRequest(BaseModel):
     team: str
     delta: int
+
+
+class GenerateFinalRequest(BaseModel):
+    scheduled_at: datetime
+    court: str | None = None
