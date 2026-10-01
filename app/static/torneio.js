@@ -42,9 +42,11 @@ async function loadActiveTournament() {
     $("tournamentPanel").classList.remove("hidden");
     $("formTeamsSection").classList.remove("hidden");
     $("matchesSection").classList.remove("hidden");
+    $("standingsSection").classList.remove("hidden");
     await loadState();
     await loadPlayerPool();
     await loadMatches();
+    await loadStandings();
   } else {
     tournamentId = null;
     $("tournamentName").textContent = "Nenhum torneio ativo";
@@ -52,6 +54,7 @@ async function loadActiveTournament() {
     $("tournamentPanel").classList.add("hidden");
     $("formTeamsSection").classList.add("hidden");
     $("matchesSection").classList.add("hidden");
+    $("standingsSection").classList.add("hidden");
   }
 }
 
@@ -345,5 +348,29 @@ $("matches").addEventListener("click", async e => {
     toast(err.message);
   }
 });
+
+async function loadStandings() {
+  const standings = await api(`/api/tournaments/${tournamentId}/standings`);
+  renderStandings(standings);
+}
+
+function renderStandings(standings) {
+  $("standingsBody").innerHTML = standings.map((row, i) => `
+    <div class="player">
+      <div class="info">
+        <div class="name">
+          ${i + 1}º ${esc(row.team)}
+          ${row.tied ? '<span class="badge wait">empate</span>' : ""}
+          <span class="badge">${row.tournament_points} pts</span>
+        </div>
+        <div class="muted">V: ${row.wins} · Saldo sets: ${row.sets_balance} · Saldo pontos: ${row.points_balance} · PP: ${row.points_for}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+setInterval(() => {
+  if (tournamentId) loadStandings().catch(err => toast(err.message));
+}, 8000);
 
 loadActiveTournament().catch(err => toast(err.message));
