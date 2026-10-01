@@ -26,6 +26,19 @@ app.include_router(tournament_router)
 app.include_router(tournament_matches_router)
 
 
+@app.middleware("http")
+async def no_cache_static(request: Request, call_next):
+    # The Cloudflare Tunnel in front of this app caches /static/* at the edge
+    # by file extension regardless of a deploy - a CSS/JS fix can go live on
+    # the container and still be served stale for a while. no-cache (not
+    # no-store) still lets Cloudflare/the browser revalidate via ETag, so a
+    # deploy is reflected on the next request instead of waiting out a TTL.
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/__health")
 def health():
     return {"status": "ok"}
