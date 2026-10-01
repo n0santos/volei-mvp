@@ -193,6 +193,49 @@ def test_generate_final_rejects_when_first_place_is_tied():
     assert exc_info.value.status_code == 400
 
 
+def test_generate_final_rejects_when_second_place_is_tied():
+    # A wins both its matches clearly (1st, unverified). B and C each beat D
+    # with identical scores and never play each other, so they're fully
+    # tied for 2nd — generate_final must not arbitrarily pick one of them.
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, (team_a, team_b, team_c, team_d) = make_tournament_and_teams(db, codes=("A", "B", "C", "D"))
+    make_finished_match(db, t.id, team_a.id, team_b.id, [(18, 5), (18, 5)])
+    make_finished_match(db, t.id, team_a.id, team_c.id, [(18, 5), (18, 5)])
+    make_finished_match(db, t.id, team_b.id, team_d.id, [(18, 10), (18, 10)])
+    make_finished_match(db, t.id, team_c.id, team_d.id, [(18, 10), (18, 10)])
+
+    with pytest.raises(HTTPException) as exc_info:
+        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
+    assert exc_info.value.status_code == 400
+
+
+def test_generate_final_rejects_when_a_group_match_is_encerrado_without_a_decided_result():
+    # Regression: the "Encerrar" button can mark a match encerrado with no
+    # actual decided result (0 or 1 closed sets). Before this fix, that
+    # match's status alone satisfied the "group stage complete" check, and
+    # since get_standings silently drops it, both teams land on identical
+    # zero-stat fallback rows that are never flagged as tied — generate_final
+    # would then create a final from bogus data with no error at all.
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, (team_a, team_b) = make_tournament_and_teams(db)
+    m = TournamentMatch(
+        tournament_id=t.id, team_a_id=team_a.id, team_b_id=team_b.id,
+        scheduled_at=datetime(2026, 11, 28, 13, 0), status="encerrado",
+    )
+    db.add(m)
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
+    assert exc_info.value.status_code == 400
+
+
 def test_encerrado_match_with_one_closed_set_does_not_crash_standings():
     # Same scenario, but with exactly one closed set — still not a decided
     # best-of-3 result (needs 2 closed sets with a winner), so it must still

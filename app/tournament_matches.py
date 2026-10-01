@@ -304,24 +304,35 @@ def generate_final(tournament_id: int, data: GenerateFinalRequest, db: DBSession
     ).scalars().all()
     if not group_matches:
         raise HTTPException(400, "Nenhum jogo de fase de grupos cadastrado")
-    if any(m.status != "encerrado" for m in group_matches):
-        raise HTTPException(400, "Ainda há jogos da fase de grupos em andamento")
+    # A match can be marked "encerrado" by hand (the Encerrar button) with no
+    # real decided result - checking the status alone isn't enough, since
+    # get_standings silently drops such a match and the standings below
+    # wouldn't reflect it. Require every group match to actually be decided.
+    if any(decided_result(db, m.id) is None for m in group_matches):
+        raise HTTPException(400, "Ainda há jogos da fase de grupos sem resultado decidido")
 
     standings = get_standings(tournament_id, db)
     if len(standings) < 2:
         raise HTTPException(400, "É preciso pelo menos 2 times na classificação")
-    if standings[0]["tied"]:
-        raise HTTPException(400, "Empate em 1º — decida manualmente e cadastre a final")
+    # standings[0]["tied"] catches a tie for 1st; standings[1]["tied"] catches
+    # a tie for 2nd (e.g. two teams tied with each other, both behind a clear
+    # 1st) - either way, picking a runner-up would be arbitrary.
+    if standings[0]["tied"] or standings[1]["tied"]:
+        raise HTTPException(400, "Empate na classificação — decida manualmente e cadastre a final")
 
     teams_by_code = {
         team.code: team.id
         for team in db.execute(select(Team).where(Team.tournament_id == tournament_id)).scalars()
     }
+    team_a_id = teams_by_code[standings[0]["team"]]
+    team_b_id = teams_by_code[standings[1]["team"]]
+    if team_a_id == team_b_id:
+        raise HTTPException(400, "Os dois times não podem ser o mesmo")
 
     m = TournamentMatch(
         tournament_id=tournament_id,
-        team_a_id=teams_by_code[standings[0]["team"]],
-        team_b_id=teams_by_code[standings[1]["team"]],
+        team_a_id=team_a_id,
+        team_b_id=team_b_id,
         scheduled_at=data.scheduled_at,
         court=data.court,
         is_final=True,

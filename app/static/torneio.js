@@ -372,6 +372,8 @@ function updateGenerateFinalVisibility() {
 
 $("generateFinalForm").addEventListener("submit", async e => {
   e.preventDefault();
+  const btn = e.target.querySelector("button");
+  btn.disabled = true;
   try {
     await api(`/api/tournaments/${tournamentId}/generate-final`, {
       method: "POST",
@@ -385,6 +387,7 @@ $("generateFinalForm").addEventListener("submit", async e => {
     await loadMatches();
   } catch (err) {
     toast(err.message);
+    btn.disabled = false;
   }
 });
 
@@ -404,7 +407,12 @@ function renderStandings(standings) {
 }
 
 setInterval(() => {
-  if (tournamentId) loadStandings().catch(err => toast(err.message));
+  if (!tournamentId) return;
+  // Both are polled together: a spectator tab that never performs a match
+  // action would otherwise never refresh lastMatches, leaving the "Gerar
+  // final" visibility check stuck on stale data indefinitely.
+  loadMatches().catch(err => toast(err.message));
+  loadStandings().catch(err => toast(err.message));
 }, 8000);
 
 loadActiveTournament().catch(err => toast(err.message));
