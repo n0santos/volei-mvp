@@ -221,7 +221,7 @@ function renderPlayerPool() {
     <label class="player">
       <div class="info">
         <div class="name">${esc(p.name)}</div>
-        <div class="muted">${p.gender} · score ${p.score}</div>
+        <div class="muted">${p.gender}</div>
       </div>
       <input type="checkbox" data-player-id="${p.id}" ${selectedPoolIds.has(p.id) ? "checked" : ""}>
     </label>
