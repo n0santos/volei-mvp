@@ -271,9 +271,14 @@ function populateTeamSelect(select, teams) {
   if (teams.some(t => String(t.id) === previous)) select.value = previous;
 }
 
+let lastMatches = [];
+let lastStandings = [];
+
 async function loadMatches() {
   const matches = await api(`/api/tournaments/${tournamentId}/matches`);
+  lastMatches = matches;
   renderMatches(matches);
+  updateGenerateFinalVisibility();
 }
 
 function renderMatches(matches) {
@@ -351,8 +356,37 @@ $("matches").addEventListener("click", async e => {
 
 async function loadStandings() {
   const standings = await api(`/api/tournaments/${tournamentId}/standings`);
+  lastStandings = standings;
   renderStandings(standings);
+  updateGenerateFinalVisibility();
 }
+
+function updateGenerateFinalVisibility() {
+  const groupMatches = lastMatches.filter(m => !m.is_final);
+  const hasFinal = lastMatches.some(m => m.is_final);
+  const groupStageDone = groupMatches.length > 0 && groupMatches.every(m => m.status === "encerrado");
+  const topTied = lastStandings.length > 0 && lastStandings[0].tied;
+  const eligible = !hasFinal && groupStageDone && lastStandings.length >= 2 && !topTied;
+  $("generateFinalForm").classList.toggle("hidden", !eligible);
+}
+
+$("generateFinalForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await api(`/api/tournaments/${tournamentId}/generate-final`, {
+      method: "POST",
+      body: JSON.stringify({
+        scheduled_at: $("finalScheduledAt").value,
+        court: $("finalCourt").value || null,
+      }),
+    });
+    $("finalScheduledAt").value = "";
+    $("finalCourt").value = "";
+    await loadMatches();
+  } catch (err) {
+    toast(err.message);
+  }
+});
 
 function renderStandings(standings) {
   $("standingsBody").innerHTML = standings.map((row, i) => `
