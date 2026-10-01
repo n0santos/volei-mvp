@@ -33,11 +33,17 @@ function normalize(s) {
   return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
+// "2026-11-28" -> "28/11/2026" — the API's plain YYYY-MM-DD, formatted for pt-BR.
+function fmtDate(s) {
+  const [y, m, d] = s.split("-");
+  return `${d}/${m}/${y}`;
+}
+
 async function loadActiveTournament() {
   const t = await api("/api/tournaments/active");
   if (t) {
     tournamentId = t.id;
-    $("tournamentName").textContent = `${t.name} (${t.start_date} a ${t.end_date})`;
+    $("tournamentName").textContent = `${t.name} (${fmtDate(t.start_date)} a ${fmtDate(t.end_date)})`;
     $("newTournament").classList.add("hidden");
     $("tournamentPanel").classList.remove("hidden");
     $("formTeamsSection").classList.remove("hidden");
