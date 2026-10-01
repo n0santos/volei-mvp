@@ -243,7 +243,9 @@ def close_set(tournament_id: int, match_id: int, db: DBSession = Depends(get_db)
 @router.get("/api/tournaments/{tournament_id}/standings")
 def get_standings(tournament_id: int, db: DBSession = Depends(get_db)):
     get_tournament(db, tournament_id)
-    teams = db.execute(select(Team).where(Team.tournament_id == tournament_id)).scalars().all()
+    teams = db.execute(
+        select(Team).where(Team.tournament_id == tournament_id).order_by(Team.code)
+    ).scalars().all()
     team_codes = {team.id: team.code for team in teams}
 
     finished_matches = db.execute(
@@ -256,11 +258,9 @@ def get_standings(tournament_id: int, db: DBSession = Depends(get_db)):
 
     engine_matches = []
     for m in finished_matches:
-        sets = db.execute(
-            select(TournamentSetResult)
-            .where(TournamentSetResult.match_id == m.id, TournamentSetResult.closed == True)
-            .order_by(TournamentSetResult.set_number)
-        ).scalars().all()
+        if decided_result(db, m.id) is None:
+            continue
+        sets = get_closed_sets(db, m.id)
         engine_matches.append(SimpleNamespace(
             team_a=team_codes.get(m.team_a_id),
             team_b=team_codes.get(m.team_b_id),
