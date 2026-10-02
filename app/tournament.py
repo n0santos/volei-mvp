@@ -4,8 +4,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from .database import get_db
 from .models import Tournament, Team, TeamPlayer, Player
-from .schemas import TournamentCreate, TeamCreate, TeamPlayerAdd, TeamPlayerUpdate, TeamFormRequest
-from .services.team_formation import form_teams
+from .schemas import TournamentCreate, TeamCreate, TeamPlayerAdd, TeamPlayerUpdate
 
 router = APIRouter()
 
@@ -169,41 +168,3 @@ def remove_team_player(team_id: int, player_id: int, db: DBSession = Depends(get
     return {"ok": True}
 
 
-@router.post("/api/tournaments/{tournament_id}/form-teams")
-def form_tournament_teams(tournament_id: int, data: TeamFormRequest, db: DBSession = Depends(get_db)):
-    get_tournament(db, tournament_id)
-    teams = db.execute(
-        select(Team).where(Team.tournament_id == tournament_id).order_by(Team.code)
-    ).scalars().all()
-    if len(teams) < 2:
-        raise HTTPException(400, "É preciso pelo menos 2 times para sortear")
-
-    occupied = db.execute(
-        select(TeamPlayer)
-        .join(Team, Team.id == TeamPlayer.team_id)
-        .where(Team.tournament_id == tournament_id)
-    ).scalars().all()
-    if occupied:
-        raise HTTPException(409, "Times já têm jogadores — remova antes de sortear de novo")
-
-    if len(data.player_ids) < len(teams):
-        raise HTTPException(400, "É preciso pelo menos um jogador por time")
-
-    if len(set(data.player_ids)) != len(data.player_ids):
-        raise HTTPException(400, "player_ids não pode ter jogador repetido")
-
-    players = []
-    for player_id in data.player_ids:
-        player = db.get(Player, player_id)
-        if not player:
-            raise HTTPException(404, f"Jogador {player_id} não encontrado")
-        players.append(player)
-
-    formed = form_teams(players, len(teams))
-
-    for team, roster in zip(teams, formed):
-        for player in roster:
-            db.add(TeamPlayer(team_id=team.id, player_id=player.id, role="titular"))
-
-    db.commit()
-    return tournament_state(tournament_id, db)

@@ -47,10 +47,6 @@ class TeamPlayerUpdate(BaseModel):
     is_captain: bool | None = None
 
 
-class TeamFormRequest(BaseModel):
-    player_ids: list[int]
-
-
 class TournamentMatchCreate(BaseModel):
     team_a_id: int
     team_b_id: int
