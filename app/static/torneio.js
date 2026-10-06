@@ -421,6 +421,7 @@ function renderFixture(m, isNext, showDay) {
                 <option value="b">${esc(m.team_a_code)} ausente (${esc(m.team_b_code)} vence)</option>
                 <option value="a">${esc(m.team_b_code)} ausente (${esc(m.team_a_code)} vence)</option>
               </select>` : ""}
+            ${m.status !== "encerrado" ? `<button data-action="reschedule" data-match-id="${m.id}" data-day="${m.scheduled_at.slice(0, 10)}" data-time="${time}">Alterar horário</button>` : ""}
             ${m.walkover ? `<button data-action="undo-walkover" data-match-id="${m.id}">Desfazer W.O.</button>` : ""}
             ${m.status === "em_andamento" ? `<button data-action="finish" data-match-id="${m.id}">Encerrar sem placar</button>` : ""}
             <button class="danger" data-action="remove-match" data-match-id="${m.id}">Remover jogo</button>
@@ -481,6 +482,18 @@ $("matchesSection").addEventListener("click", async e => {
     } else if (action === "remove-match") {
       if (!confirm("Remover este jogo e o placar dele?")) return;
       await api(`/api/tournaments/${tournamentId}/matches/${matchId}`, { method: "DELETE" });
+    } else if (action === "reschedule") {
+      const input = prompt("Novo horário (HH:MM)", btn.dataset.time);
+      if (input === null) return;
+      const hhmm = input.trim();
+      if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(hhmm)) {
+        toast("Use o formato HH:MM, por exemplo 09:30");
+        return;
+      }
+      await api(`/api/tournaments/${tournamentId}/matches/${matchId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ scheduled_at: `${btn.dataset.day}T${hhmm.padStart(5, "0")}` }),
+      });
     } else if (action === "undo-walkover") {
       await api(`/api/tournaments/${tournamentId}/matches/${matchId}/walkover`, { method: "DELETE" });
     }
@@ -520,19 +533,35 @@ async function loadStandings() {
   updateKnockoutForms();
 }
 
+// Both generate buttons stay on screen with a note about what they wait for,
+// and go away once their games exist.
 function updateKnockoutForms() {
   const byStage = stage => lastMatches.find(m => m.stage === stage);
-  const bothGroupsDone = ["A", "B"].every(name => lastStandings.some(g => g.group === name && g.complete));
   const semis = [byStage("semifinal_1"), byStage("semifinal_2")];
+  const semisExist = semis.some(Boolean);
+  const finalsExist = Boolean(byStage("final") || byStage("terceiro_lugar"));
 
-  const showSemis = bothGroupsDone && !semis[0] && !semis[1];
-  const showFinals = semis.every(m => m && m.status === "encerrado") && !byStage("final") && !byStage("terceiro_lugar");
+  const groupsDone = ["A", "B"].every(name => lastStandings.some(g => g.group === name && g.complete));
+  const tied = lastStandings
+    .filter(g => g.group && g.complete && g.rows.filter(r => r.qualified).length < 2)
+    .map(g => g.group);
+  const semisReady = groupsDone && tied.length === 0;
+  const finalsReady = semis.every(m => m && m.status === "encerrado");
   const when = tournamentDays.length ? ` de ${dayLabel(lastDay())}` : "";
-  $("semisHint").textContent = `Os dois grupos terminaram. Confirme os horários das semifinais${when}.`;
-  $("finalsHint").textContent = `As semifinais terminaram. Confirme os horários do 3º lugar e da final${when}.`;
-  $("generateSemisForm").classList.toggle("hidden", !showSemis);
-  $("generateFinalsForm").classList.toggle("hidden", !showFinals);
-  $("finalEmpty").classList.toggle("hidden", showSemis || showFinals || lastMatches.some(m => m.stage !== "grupos"));
+
+  $("generateSemisForm").classList.toggle("hidden", semisExist);
+  $("semisBtn").disabled = !semisReady;
+  $("semisHint").textContent = semisReady
+    ? `Os dois grupos terminaram. Confirme os horários das semifinais${when}.`
+    : tied.length
+      ? `Empate na classificação do grupo ${tied.join(" e ")}. Faça o sorteio e cadastre as semifinais em “+ Jogo”.`
+      : "Disponível quando os dois grupos terminarem.";
+
+  $("generateFinalsForm").classList.toggle("hidden", finalsExist);
+  $("finalsBtn").disabled = !finalsReady;
+  $("finalsHint").textContent = finalsReady
+    ? `As semifinais terminaram. Confirme os horários do 3º lugar e da final${when}.`
+    : "Disponível quando as duas semifinais terminarem.";
 }
 
 async function loadPodium() {
@@ -569,7 +598,7 @@ $("generateSemisForm").addEventListener("submit", async e => {
   } catch (err) {
     toast(err.message);
   } finally {
-    btn.disabled = false;
+    updateKnockoutForms();
   }
 });
 
@@ -590,7 +619,7 @@ $("generateFinalsForm").addEventListener("submit", async e => {
   } catch (err) {
     toast(err.message);
   } finally {
-    btn.disabled = false;
+    updateKnockoutForms();
   }
 });
 
