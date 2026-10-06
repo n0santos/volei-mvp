@@ -168,7 +168,7 @@ def get_scoreboard(tournament_id: int, match_id: int, db: DBSession = Depends(ge
 
     current_set = None
     if open_set and result is None:
-        target = SET_TARGETS.get(open_set.set_number, 15)
+        target = SET_TARGETS.get(open_set.set_number, 18)
         current_set = {
             **serialize_set(open_set),
             "target": target,
@@ -225,7 +225,7 @@ def close_set(tournament_id: int, match_id: int, db: DBSession = Depends(get_db)
     if not open_set:
         raise HTTPException(400, "Não há set em aberto")
 
-    target = SET_TARGETS.get(open_set.set_number, 15)
+    target = SET_TARGETS.get(open_set.set_number, 18)
     if not is_set_over(open_set.points_a, open_set.points_b, target):
         raise HTTPException(400, "O set ainda não terminou")
 

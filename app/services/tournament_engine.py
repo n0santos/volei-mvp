@@ -1,4 +1,4 @@
-SET_TARGETS = {1: 18, 2: 18, 3: 15}
+SET_TARGETS = {1: 15, 2: 15, 3: 18}
 
 
 def is_set_over(a, b, target):

@@ -263,7 +263,7 @@ def test_first_point_creates_set_one():
     assert board["sets"][0]["set_number"] == 1
     assert board["sets"][0]["points_a"] == 1
     assert board["current_set"]["points_a"] == 1
-    assert board["current_set"]["target"] == 18
+    assert board["current_set"]["target"] == 15
     assert board["current_set"]["is_over"] is False
 
 
@@ -310,6 +310,43 @@ def test_close_set_and_start_next():
     board = get_scoreboard(t.id, m.id, db)
     assert board["current_set"]["set_number"] == 2
     assert board["current_set"]["points_b"] == 1
+
+
+def test_sets_one_and_two_go_to_15_and_set_three_to_18():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    m = make_match(db, t.id, team_a.id, team_b.id)
+
+    def score(team, n):
+        for _ in range(n):
+            add_point(t.id, m.id, SetPointRequest(team=team, delta=1), db)
+
+    # Set 1: 15x14 isn't over (needs a 2-point lead); 15x13 is.
+    score("a", 15)
+    score("b", 14)
+    with pytest.raises(HTTPException):
+        close_set(t.id, m.id, db)
+    add_point(t.id, m.id, SetPointRequest(team="b", delta=-1), db)
+    close_set(t.id, m.id, db)
+
+    # Set 2 (15 too), won by B so the match goes to a 3rd set.
+    score("b", 15)
+    close_set(t.id, m.id, db)
+
+    # Set 3: 15x10 isn't enough, it only ends at 18.
+    score("a", 15)
+    score("b", 10)
+    board = get_scoreboard(t.id, m.id, db)
+    assert board["current_set"]["target"] == 18
+    assert board["current_set"]["is_over"] is False
+    with pytest.raises(HTTPException):
+        close_set(t.id, m.id, db)
+    score("a", 3)
+    close_set(t.id, m.id, db)
+    assert get_scoreboard(t.id, m.id, db)["result"]["winner"] == "A"
 
 
 def test_match_finishes_and_status_updates_after_two_sets():

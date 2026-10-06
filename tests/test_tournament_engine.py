@@ -4,7 +4,7 @@ from app.services.tournament_engine import SET_TARGETS, is_set_over, set_winner,
 
 
 def test_set_targets():
-    assert SET_TARGETS == {1: 18, 2: 18, 3: 15}
+    assert SET_TARGETS == {1: 15, 2: 15, 3: 18}
 
 
 def test_set_not_over_at_17_17():
