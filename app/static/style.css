@@ -144,6 +144,16 @@ button.danger { background: var(--danger); color: white; border-color: var(--dan
 .total { font-family: var(--font-display); font-weight:700; margin-top:10px; font-variant-numeric: tabular-nums; }
 
 .hidden { display:none !important; }
+
+/* Tournament page tabs: the active tab is body[data-tab]. Panes only get
+   hidden here - showing is left to .hidden, which tracks whether a
+   tournament is active at all. */
+.tabs { display:flex; gap:6px; margin-bottom: 4px; }
+.tabs button { flex: 1; font-weight: 600; }
+.tabs button.active { background: var(--court); color: white; border-color: transparent; }
+body[data-tab="jogos"] .tab-pane:not([data-pane="jogos"]),
+body[data-tab="classificacao"] .tab-pane:not([data-pane="classificacao"]),
+body[data-tab="equipes"] .tab-pane:not([data-pane="equipes"]) { display:none; }
 #toast {
   position: fixed;
   bottom: 20px;

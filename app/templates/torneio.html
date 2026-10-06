@@ -22,6 +22,12 @@
 </header>
 <div class="app">
   <main>
+    <nav id="tabs" class="tabs hidden" role="tablist" aria-label="Seções do torneio">
+      <button role="tab" data-tab="jogos">Jogos</button>
+      <button role="tab" data-tab="classificacao">Classificação</button>
+      <button role="tab" data-tab="equipes">Equipes</button>
+    </nav>
+
     <section id="newTournament" class="panel">
       <h2>Novo torneio</h2>
       <form id="tournamentForm" class="inline">
@@ -32,7 +38,7 @@
       </form>
     </section>
 
-    <section id="tournamentPanel" class="panel hidden">
+    <section id="tournamentPanel" class="panel tab-pane hidden" data-pane="equipes">
       <h2>Times</h2>
       <form id="teamForm" class="inline">
         <input id="teamCode" placeholder="Código do time (ex.: A)" required>
@@ -41,7 +47,7 @@
       <div id="teams"></div>
     </section>
 
-    <section id="matchesSection" class="panel hidden">
+    <section id="matchesSection" class="panel tab-pane hidden" data-pane="jogos">
       <h2>Jogos</h2>
       <form id="matchForm" class="inline">
         <select id="matchTeamA" required></select>
@@ -61,7 +67,7 @@
       <div id="matches"></div>
     </section>
 
-    <section id="standingsSection" class="panel hidden">
+    <section id="standingsSection" class="panel tab-pane hidden" data-pane="classificacao">
       <h2>Classificação</h2>
       <div id="standingsBody" class="player-grid"></div>
       <form id="generateSemisForm" class="inline hidden">
@@ -78,7 +84,7 @@
       </form>
     </section>
 
-    <section id="podiumSection" class="panel hidden">
+    <section id="podiumSection" class="panel tab-pane hidden" data-pane="classificacao">
       <h2>Pódio</h2>
       <div id="podiumBody"></div>
     </section>

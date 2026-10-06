@@ -39,12 +39,35 @@ function fmtDate(s) {
   return `${d}/${m}/${y}`;
 }
 
+const TABS = ["jogos", "classificacao", "equipes"];
+
+// The tab lives in the URL hash (/torneio#equipes), so a reload or a shared
+// link opens the same one; the panes themselves are hidden by CSS.
+function selectTab(name) {
+  if (!TABS.includes(name)) name = "jogos";
+  document.body.dataset.tab = name;
+  document.querySelectorAll("#tabs button").forEach(btn => {
+    const active = btn.dataset.tab === name;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active);
+  });
+  if (location.hash !== `#${name}`) history.replaceState(null, "", `#${name}`);
+}
+
+$("tabs").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-tab]");
+  if (btn) selectTab(btn.dataset.tab);
+});
+window.addEventListener("hashchange", () => selectTab(location.hash.slice(1)));
+selectTab(location.hash.slice(1));
+
 async function loadActiveTournament() {
   const t = await api("/api/tournaments/active");
   if (t) {
     tournamentId = t.id;
     $("tournamentName").textContent = `${t.name} (${fmtDate(t.start_date)} a ${fmtDate(t.end_date)})`;
     $("newTournament").classList.add("hidden");
+    $("tabs").classList.remove("hidden");
     $("tournamentPanel").classList.remove("hidden");
     $("matchesSection").classList.remove("hidden");
     $("standingsSection").classList.remove("hidden");
@@ -56,6 +79,7 @@ async function loadActiveTournament() {
     tournamentId = null;
     $("tournamentName").textContent = "Nenhum torneio ativo";
     $("newTournament").classList.remove("hidden");
+    $("tabs").classList.add("hidden");
     $("tournamentPanel").classList.add("hidden");
     $("matchesSection").classList.add("hidden");
     $("standingsSection").classList.add("hidden");
