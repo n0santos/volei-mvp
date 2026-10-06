@@ -295,18 +295,7 @@ def group_standings(db, tournament_id, teams):
             sets=[(s.points_a, s.points_b) for s in sets],
         ))
 
-    standings = compute_standings(engine_matches)
-
-    present_codes = {row["team"] for row in standings}
-    for code in team_codes.values():
-        if code not in present_codes:
-            standings.append({
-                "team": code,
-                "wins": 0, "losses": 0,
-                "sets_for": 0, "sets_against": 0, "sets_balance": 0,
-                "points_for": 0, "points_against": 0, "points_balance": 0,
-                "tournament_points": 0, "tied": False,
-            })
+    standings = compute_standings(engine_matches, teams=team_codes.values())
 
     n = len(teams)
     complete = n >= 2 and len(played_pairs) == n * (n - 1) // 2

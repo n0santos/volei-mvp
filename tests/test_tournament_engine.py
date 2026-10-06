@@ -1,6 +1,6 @@
 import pytest
 from types import SimpleNamespace
-from app.services.tournament_engine import SET_TARGETS, is_set_over, set_winner, match_points, match_result, compute_standings
+from app.services.tournament_engine import SET_TARGETS, is_set_over, set_winner, match_points, match_result, compute_standings, mark_qualified
 
 
 def test_set_targets():
@@ -162,17 +162,96 @@ def test_tournament_points_wins_and_set_balance_tie_broken_by_point_balance():
     assert order == ["I", "J"]
 
 
-def test_everything_but_points_for_tied_is_broken_by_points_for():
+def test_points_for_no_longer_breaks_ties():
+    # Same point balance (+20) but K scored more: not a regulation criterion,
+    # so with no head-to-head between them they stay tied.
     matches = [
         m("K", "V3", [(30, 20), (30, 20)]),
         m("L", "V4", [(25, 15), (25, 15)]),
     ]
-    standings = compute_standings(matches)
-    by_team = {s["team"]: s for s in standings}
+    by_team = {s["team"]: s for s in compute_standings(matches)}
     assert by_team["K"]["points_balance"] == by_team["L"]["points_balance"] == 20
     assert by_team["K"]["points_for"] > by_team["L"]["points_for"]
-    order = [s["team"] for s in standings if s["team"] in {"K", "L"}]
-    assert order == ["K", "L"]
+    assert by_team["K"]["tied"] is True
+    assert by_team["L"]["tied"] is True
+    assert by_team["K"]["rank"] == by_team["L"]["rank"]
+
+
+def level_pair_scenario():
+    # X and Y end level on points (3), wins (1), set balance (0) and point
+    # balance (0): each beats one team 15-10 15-10 and loses to another by
+    # the same score. X also beat Y, which is what head-to-head looks at.
+    # W (3 pts, +2 sets) is clearly 1st and Z (0 pts) clearly last.
+    # Y is listed first so a plain stable sort would put Y ahead of X.
+    return [
+        m("Y", "Z", [(15, 10), (15, 10)]),
+        m("X", "Y", [(15, 10), (15, 10)]),
+        m("W", "X", [(15, 10), (15, 10)]),
+    ]
+
+
+def test_head_to_head_breaks_a_two_way_tie():
+    standings = compute_standings(level_pair_scenario())
+
+    by_team = {s["team"]: s for s in standings}
+    for team in ("X", "Y"):
+        assert (by_team[team]["tournament_points"], by_team[team]["wins"]) == (3, 1)
+        assert (by_team[team]["sets_balance"], by_team[team]["points_balance"]) == (0, 0)
+    assert [s["team"] for s in standings] == ["W", "X", "Y", "Z"]
+    assert [s["rank"] for s in standings] == [1, 2, 3, 4]
+    assert by_team["X"]["tied"] is False
+    assert by_team["Y"]["tied"] is False
+
+
+def test_two_way_tie_stays_when_the_teams_split_their_meetings():
+    matches = [
+        m("X", "Y", [(15, 10), (15, 10)]),
+        m("Y", "X", [(15, 10), (15, 10)]),
+    ]
+    by_team = {s["team"]: s for s in compute_standings(matches)}
+    assert by_team["X"]["tied"] is True
+    assert by_team["Y"]["tied"] is True
+    assert by_team["X"]["rank"] == by_team["Y"]["rank"] == 1
+
+
+def test_head_to_head_does_not_apply_to_a_three_way_cycle():
+    # X beats Y, Y beats Z, Z beats X, all by the same score.
+    matches = [
+        m("X", "Y", [(15, 10), (15, 10)]),
+        m("Y", "Z", [(15, 10), (15, 10)]),
+        m("Z", "X", [(15, 10), (15, 10)]),
+    ]
+    standings = compute_standings(matches)
+    assert all(s["tied"] for s in standings)
+    assert {s["rank"] for s in standings} == {1}
+
+
+def test_teams_that_have_not_played_share_a_rank_but_are_not_flagged_tied():
+    standings = compute_standings([], teams=["A", "B", "C"])
+    assert [s["team"] for s in standings] == ["A", "B", "C"]
+    assert {s["rank"] for s in standings} == {1}
+    assert not any(s["tied"] for s in standings)
+
+
+def test_qualification_cut_follows_head_to_head():
+    # X and Y are level in every number, but X beat Y, so the cut after 2nd
+    # place (W, X) is clean and Y is out - without head-to-head it would be
+    # a tie at the cut and nobody would qualify.
+    standings = compute_standings(level_pair_scenario())
+    mark_qualified(standings)
+    assert {s["team"]: s["qualified"] for s in standings} == {"W": True, "X": True, "Y": False, "Z": False}
+
+
+def test_qualification_cut_is_blocked_by_an_unresolved_tie():
+    matches = [
+        m("W", "X", [(15, 10), (15, 10)]),
+        m("W", "Y", [(15, 10), (15, 10)]),
+        m("X", "Z", [(15, 10), (15, 10)]),
+        m("Y", "Z", [(15, 10), (15, 10)]),
+    ]  # X and Y: same record, never met
+    standings = compute_standings(matches)
+    mark_qualified(standings)
+    assert not any(s["qualified"] for s in standings)
 
 
 def test_full_tie_marks_teams_as_tied():

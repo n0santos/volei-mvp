@@ -54,13 +54,57 @@ def _new_team_row(name):
 
 
 def _standings_sort_key(row):
+    # Regulation, in order: points, wins, set balance, point balance. What's
+    # still equal after this goes to head-to-head, then to a draw by the
+    # organization (_resolve_ties).
     return (
         -row["tournament_points"],
         -row["wins"],
         -row["sets_balance"],
         -row["points_balance"],
-        -row["points_for"],
     )
+
+
+def _resolve_ties(standings, head_to_head):
+    """Reorder `standings` (already sorted by _standings_sort_key) and set
+    each row's `rank` and `tied`.
+
+    Head-to-head only breaks a tie between exactly two teams, by who won the
+    match(es) between them. With three or more tied it doesn't apply (it can
+    be a cycle), and a two-way tie with no winner between them stays a tie -
+    both are left for the organization's draw. Rows still tied share a rank.
+    """
+    resolved = []
+    i = 0
+    while i < len(standings):
+        j = i
+        while j + 1 < len(standings) and _standings_sort_key(standings[j + 1]) == _standings_sort_key(standings[i]):
+            j += 1
+        run = standings[i:j + 1]
+
+        if len(run) == 2:
+            x, y = run
+            x_wins = head_to_head.get((x["team"], y["team"]), 0)
+            y_wins = head_to_head.get((y["team"], x["team"]), 0)
+            if x_wins != y_wins:
+                run = [x, y] if x_wins > y_wins else [y, x]
+                for offset, row in enumerate(run):
+                    row["rank"] = i + 1 + offset
+                    row["tied"] = False
+                resolved += run
+                i = j + 1
+                continue
+
+        # Teams that haven't played yet are all equal but not "tied" in any
+        # meaningful sense, so don't flag them (they still share a rank).
+        any_played = any(row["wins"] + row["losses"] > 0 for row in run)
+        for row in run:
+            row["rank"] = i + 1
+            row["tied"] = len(run) > 1 and any_played
+        resolved += run
+        i = j + 1
+
+    standings[:] = resolved
 
 
 def mark_qualified(standings, slots=2):
@@ -70,20 +114,23 @@ def mark_qualified(standings, slots=2):
     isn't final."""
     for s in standings:
         s["qualified"] = False
-    cut_is_tied = (
-        len(standings) > slots
-        and _standings_sort_key(standings[slots - 1]) == _standings_sort_key(standings[slots])
-    )
+    cut_is_tied = len(standings) > slots and standings[slots - 1]["rank"] == standings[slots]["rank"]
     if not cut_is_tied:
         for s in standings[:slots]:
             s["qualified"] = True
 
 
-def compute_standings(matches):
-    teams = {}
+def compute_standings(matches, teams=()):
+    """`teams` lists names that must appear even with no match played (kept
+    first-come order among equals)."""
+    rows = {}
+    head_to_head = {}  # (winner, loser) -> how many times winner beat loser
 
     def row(name):
-        return teams.setdefault(name, _new_team_row(name))
+        return rows.setdefault(name, _new_team_row(name))
+
+    for name in teams:
+        row(name)
 
     for match in matches:
         result = match_result(match.sets)
@@ -103,25 +150,21 @@ def compute_standings(matches):
         if result["winner"] == "A":
             a["wins"] += 1
             b["losses"] += 1
+            head_to_head[(match.team_a, match.team_b)] = head_to_head.get((match.team_a, match.team_b), 0) + 1
         elif result["winner"] == "B":
             b["wins"] += 1
             a["losses"] += 1
+            head_to_head[(match.team_b, match.team_a)] = head_to_head.get((match.team_b, match.team_a), 0) + 1
 
         a["tournament_points"] += match_points(result["sets_a"], result["sets_b"])
         b["tournament_points"] += match_points(result["sets_b"], result["sets_a"])
 
-    standings = list(teams.values())
+    standings = list(rows.values())
     for s in standings:
         s["sets_balance"] = s["sets_for"] - s["sets_against"]
         s["points_balance"] = s["points_for"] - s["points_against"]
 
     standings.sort(key=_standings_sort_key)
-
-    for s in standings:
-        s["tied"] = False
-    for i in range(len(standings) - 1):
-        if _standings_sort_key(standings[i]) == _standings_sort_key(standings[i + 1]):
-            standings[i]["tied"] = True
-            standings[i + 1]["tied"] = True
+    _resolve_ties(standings, head_to_head)
 
     return standings

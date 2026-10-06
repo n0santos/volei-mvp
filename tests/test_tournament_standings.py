@@ -68,9 +68,9 @@ def test_teams_with_no_finished_match_still_appear_at_zero():
     assert by_team["C"]["tournament_points"] == 0
     assert by_team["C"]["wins"] == 0
     assert by_team["C"]["tied"] is False
-    # Zero-match team appended at the end should come after teams that
-    # actually played, in deterministic (team-code) order.
-    assert standings[-1]["team"] == "C"
+    # C hasn't played, so it ties B on points and wins but beats B's -2 set
+    # balance from the 0x2 loss; it is ranked by the same criteria as everyone.
+    assert [row["team"] for row in standings] == ["A", "C", "B"]
 
 
 def test_final_match_does_not_count_toward_standings():

@@ -399,7 +399,7 @@ function renderStandings(groups) {
             ${row.tied ? '<span class="badge wait">empate</span>' : ""}
             <span class="badge">${row.tournament_points} pts</span>
           </div>
-          <div class="muted">V: ${row.wins} · Saldo sets: ${row.sets_balance} · Saldo pontos: ${row.points_balance} · PP: ${row.points_for}</div>
+          <div class="muted">V: ${row.wins} · Saldo sets: ${row.sets_balance} · Saldo pontos: ${row.points_balance}</div>
         </div>
       </div>
     `).join("")}
