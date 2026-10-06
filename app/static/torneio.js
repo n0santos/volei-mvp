@@ -74,6 +74,12 @@ function renderTeam(team) {
   return `
     <div class="panel" data-team-id="${team.id}">
       <h3>Time ${esc(team.code)} <span class="muted">(${team.players.length} jogador(es), ${titulares} titulares)</span></h3>
+      <label class="muted">Grupo
+        <select class="group-select" data-team-id="${team.id}">
+          <option value="">—</option>
+          ${["A", "B"].map(g => `<option value="${g}"${team.group_name === g ? " selected" : ""}>${g}</option>`).join("")}
+        </select>
+      </label>
       <div class="roster-list">
         ${team.players.map(p => renderPlayer(team.id, p)).join("")}
       </div>
@@ -167,6 +173,20 @@ $("teams").addEventListener("submit", async e => {
   }
 });
 
+$("teams").addEventListener("change", async e => {
+  if (!e.target.classList.contains("group-select")) return;
+  try {
+    await api(`/api/teams/${e.target.dataset.teamId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ group_name: e.target.value || null }),
+    });
+    await loadState();
+    await loadStandings();
+  } catch (err) {
+    toast(err.message);
+  }
+});
+
 $("teams").addEventListener("click", async e => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
@@ -201,13 +221,11 @@ function populateTeamSelect(select, teams) {
 }
 
 let lastMatches = [];
-let lastStandings = [];
 
 async function loadMatches() {
   const matches = await api(`/api/tournaments/${tournamentId}/matches`);
   lastMatches = matches;
   renderMatches(matches);
-  updateGenerateFinalVisibility();
 }
 
 function renderMatches(matches) {
@@ -284,54 +302,27 @@ $("matches").addEventListener("click", async e => {
 });
 
 async function loadStandings() {
-  const standings = await api(`/api/tournaments/${tournamentId}/standings`);
-  lastStandings = standings;
-  renderStandings(standings);
-  updateGenerateFinalVisibility();
+  renderStandings(await api(`/api/tournaments/${tournamentId}/standings`));
 }
 
-function updateGenerateFinalVisibility() {
-  const groupMatches = lastMatches.filter(m => !m.is_final);
-  const hasFinal = lastMatches.some(m => m.is_final);
-  const groupStageDone = groupMatches.length > 0 && groupMatches.every(m => m.status === "encerrado");
-  const topTied = lastStandings.length > 0 && lastStandings[0].tied;
-  const eligible = !hasFinal && groupStageDone && lastStandings.length >= 2 && !topTied;
-  $("generateFinalForm").classList.toggle("hidden", !eligible);
-}
-
-$("generateFinalForm").addEventListener("submit", async e => {
-  e.preventDefault();
-  const btn = e.target.querySelector("button");
-  btn.disabled = true;
-  try {
-    await api(`/api/tournaments/${tournamentId}/generate-final`, {
-      method: "POST",
-      body: JSON.stringify({
-        scheduled_at: $("finalScheduledAt").value,
-        court: $("finalCourt").value || null,
-      }),
-    });
-    $("finalScheduledAt").value = "";
-    $("finalCourt").value = "";
-    await loadMatches();
-  } catch (err) {
-    toast(err.message);
-    btn.disabled = false;
-  }
-});
-
-function renderStandings(standings) {
-  $("standingsBody").innerHTML = standings.map((row, i) => `
-    <div class="player">
-      <div class="info">
-        <div class="name">
-          ${i + 1}º ${esc(row.team)}
-          ${row.tied ? '<span class="badge wait">empate</span>' : ""}
-          <span class="badge">${row.tournament_points} pts</span>
+function renderStandings(groups) {
+  $("standingsBody").innerHTML = groups.map(g => `
+    <h3>${g.group ? `Grupo ${esc(g.group)}` : "Sem grupo"}
+      ${g.group && !g.complete ? '<span class="muted">(jogos pendentes)</span>' : ""}
+    </h3>
+    ${g.rows.map((row, i) => `
+      <div class="player">
+        <div class="info">
+          <div class="name">
+            ${i + 1}º ${esc(row.team)}
+            ${row.qualified ? '<span class="badge qualified">classificada</span>' : ""}
+            ${row.tied ? '<span class="badge wait">empate</span>' : ""}
+            <span class="badge">${row.tournament_points} pts</span>
+          </div>
+          <div class="muted">V: ${row.wins} · Saldo sets: ${row.sets_balance} · Saldo pontos: ${row.points_balance} · PP: ${row.points_for}</div>
         </div>
-        <div class="muted">V: ${row.wins} · Saldo sets: ${row.sets_balance} · Saldo pontos: ${row.points_balance} · PP: ${row.points_for}</div>
       </div>
-    </div>
+    `).join("")}
   `).join("");
 }
 

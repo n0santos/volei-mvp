@@ -37,6 +37,10 @@ class TeamCreate(BaseModel):
     code: str
 
 
+class TeamUpdate(BaseModel):
+    group_name: str | None = None
+
+
 class TeamPlayerAdd(BaseModel):
     player_id: int
     role: str = "titular"
@@ -67,8 +71,3 @@ class TournamentMatchUpdate(BaseModel):
 class SetPointRequest(BaseModel):
     team: str
     delta: int
-
-
-class GenerateFinalRequest(BaseModel):
-    scheduled_at: datetime
-    court: str | None = None

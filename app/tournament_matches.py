@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session as DBSession
 
 from .database import get_db
 from .models import Team, TournamentMatch, TournamentSetResult
-from .schemas import TournamentMatchCreate, TournamentMatchUpdate, SetPointRequest, GenerateFinalRequest
-from .services.tournament_engine import SET_TARGETS, is_set_over, match_result, compute_standings
+from .schemas import TournamentMatchCreate, TournamentMatchUpdate, SetPointRequest
+from .services.tournament_engine import SET_TARGETS, is_set_over, match_result, compute_standings, mark_qualified
 from .tournament import get_tournament
 
 router = APIRouter()
@@ -240,12 +240,9 @@ def close_set(tournament_id: int, match_id: int, db: DBSession = Depends(get_db)
     return serialize_set(open_set)
 
 
-@router.get("/api/tournaments/{tournament_id}/standings")
-def get_standings(tournament_id: int, db: DBSession = Depends(get_db)):
-    get_tournament(db, tournament_id)
-    teams = db.execute(
-        select(Team).where(Team.tournament_id == tournament_id).order_by(Team.code)
-    ).scalars().all()
+def group_standings(db, tournament_id, teams):
+    """Standings among `teams` only (one group). Returns (rows, complete),
+    where complete means every pair of teams has a decided match."""
     team_codes = {team.id: team.code for team in teams}
 
     finished_matches = db.execute(
@@ -257,13 +254,17 @@ def get_standings(tournament_id: int, db: DBSession = Depends(get_db)):
     ).scalars().all()
 
     engine_matches = []
+    played_pairs = set()
     for m in finished_matches:
+        if m.team_a_id not in team_codes or m.team_b_id not in team_codes:
+            continue
         if decided_result(db, m.id) is None:
             continue
         sets = get_closed_sets(db, m.id)
+        played_pairs.add(frozenset((m.team_a_id, m.team_b_id)))
         engine_matches.append(SimpleNamespace(
-            team_a=team_codes.get(m.team_a_id),
-            team_b=team_codes.get(m.team_b_id),
+            team_a=team_codes[m.team_a_id],
+            team_b=team_codes[m.team_b_id],
             sets=[(s.points_a, s.points_b) for s in sets],
         ))
 
@@ -280,64 +281,38 @@ def get_standings(tournament_id: int, db: DBSession = Depends(get_db)):
                 "tournament_points": 0, "tied": False,
             })
 
-    return standings
+    n = len(teams)
+    complete = n >= 2 and len(played_pairs) == n * (n - 1) // 2
+    return standings, complete
+
+
+@router.get("/api/tournaments/{tournament_id}/standings")
+def get_standings(tournament_id: int, db: DBSession = Depends(get_db)):
+    get_tournament(db, tournament_id)
+    teams = db.execute(
+        select(Team).where(Team.tournament_id == tournament_id).order_by(Team.code)
+    ).scalars().all()
+
+    by_group = {}
+    for team in teams:
+        by_group.setdefault(team.group_name, []).append(team)
+
+    # Real groups first (A, B); teams not drawn yet go in a trailing None block.
+    result = []
+    for group in sorted(by_group, key=lambda g: (g is None, g or "")):
+        rows, complete = group_standings(db, tournament_id, by_group[group])
+        if group is not None and complete:
+            mark_qualified(rows)
+        else:
+            for row in rows:
+                row["qualified"] = False
+        result.append({"group": group, "complete": complete, "rows": rows})
+
+    return result
 
 
 @router.post("/api/tournaments/{tournament_id}/generate-final")
-def generate_final(tournament_id: int, data: GenerateFinalRequest, db: DBSession = Depends(get_db)):
-    get_tournament(db, tournament_id)
-
-    existing_final = db.execute(
-        select(TournamentMatch).where(
-            TournamentMatch.tournament_id == tournament_id,
-            TournamentMatch.is_final == True,
-        )
-    ).scalar_one_or_none()
-    if existing_final:
-        raise HTTPException(409, "A final já foi cadastrada")
-
-    group_matches = db.execute(
-        select(TournamentMatch).where(
-            TournamentMatch.tournament_id == tournament_id,
-            TournamentMatch.is_final == False,
-        )
-    ).scalars().all()
-    if not group_matches:
-        raise HTTPException(400, "Nenhum jogo de fase de grupos cadastrado")
-    # A match can be marked "encerrado" by hand (the Encerrar button) with no
-    # real decided result - checking the status alone isn't enough, since
-    # get_standings silently drops such a match and the standings below
-    # wouldn't reflect it. Require every group match to actually be decided.
-    if any(decided_result(db, m.id) is None for m in group_matches):
-        raise HTTPException(400, "Ainda há jogos da fase de grupos sem resultado decidido")
-
-    standings = get_standings(tournament_id, db)
-    if len(standings) < 2:
-        raise HTTPException(400, "É preciso pelo menos 2 times na classificação")
-    # standings[0]["tied"] catches a tie for 1st; standings[1]["tied"] catches
-    # a tie for 2nd (e.g. two teams tied with each other, both behind a clear
-    # 1st) - either way, picking a runner-up would be arbitrary.
-    if standings[0]["tied"] or standings[1]["tied"]:
-        raise HTTPException(400, "Empate na classificação — decida manualmente e cadastre a final")
-
-    teams_by_code = {
-        team.code: team.id
-        for team in db.execute(select(Team).where(Team.tournament_id == tournament_id)).scalars()
-    }
-    team_a_id = teams_by_code[standings[0]["team"]]
-    team_b_id = teams_by_code[standings[1]["team"]]
-    if team_a_id == team_b_id:
-        raise HTTPException(400, "Os dois times não podem ser o mesmo")
-
-    m = TournamentMatch(
-        tournament_id=tournament_id,
-        team_a_id=team_a_id,
-        team_b_id=team_b_id,
-        scheduled_at=data.scheduled_at,
-        court=data.court,
-        is_final=True,
-    )
-    db.add(m)
-    db.commit()
-    db.refresh(m)
-    return m
+def generate_final(tournament_id: int, db: DBSession = Depends(get_db)):
+    # The old rule (final between the top 2 overall) doesn't exist in the
+    # regulation: groups feed semifinals, then a 3rd-place game and the final.
+    raise HTTPException(409, "Indisponível até as semifinais serem implementadas")

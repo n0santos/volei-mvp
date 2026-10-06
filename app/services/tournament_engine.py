@@ -63,6 +63,22 @@ def _standings_sort_key(row):
     )
 
 
+def mark_qualified(standings, slots=2):
+    """Flag the top `slots` rows as qualified, unless the last slot is tied
+    with the first team left out - picking one of them would be arbitrary.
+    Call only once the group is complete: with games still to play the order
+    isn't final."""
+    for s in standings:
+        s["qualified"] = False
+    cut_is_tied = (
+        len(standings) > slots
+        and _standings_sort_key(standings[slots - 1]) == _standings_sort_key(standings[slots])
+    )
+    if not cut_is_tied:
+        for s in standings[:slots]:
+            s["qualified"] = True
+
+
 def compute_standings(matches):
     teams = {}
 

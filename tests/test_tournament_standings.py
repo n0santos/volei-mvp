@@ -5,7 +5,6 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
 from app.models import Tournament, Team, TournamentMatch, TournamentSetResult
-from app.schemas import GenerateFinalRequest
 from app.tournament_matches import get_standings, generate_final
 
 
@@ -15,14 +14,20 @@ def make_db():
     return sessionmaker(bind=engine)()
 
 
-def make_tournament_and_teams(db, codes=("A", "B")):
+def make_tournament_and_teams(db, codes=("A", "B"), groups=None):
     t = Tournament(name="Torneio", start_date=date(2026, 11, 28), end_date=date(2026, 11, 29))
     db.add(t)
     db.flush()
-    teams = [Team(tournament_id=t.id, code=code) for code in codes]
+    groups = groups or (None,) * len(codes)
+    teams = [Team(tournament_id=t.id, code=code, group_name=g) for code, g in zip(codes, groups)]
     db.add_all(teams)
     db.flush()
     return t, teams
+
+
+def standings_rows(tournament_id, db):
+    # Flat view of every group's rows - enough for tests that don't care about groups.
+    return [row for g in get_standings(tournament_id, db) for row in g["rows"]]
 
 
 def make_finished_match(db, tournament_id, team_a_id, team_b_id, sets, is_final=False):
@@ -43,7 +48,7 @@ def test_standings_from_a_finished_match():
     t, (team_a, team_b) = make_tournament_and_teams(db)
     make_finished_match(db, t.id, team_a.id, team_b.id, [(18, 10), (18, 12)])
 
-    standings = get_standings(t.id, db)
+    standings = standings_rows(t.id, db)
 
     by_team = {row["team"]: row for row in standings}
     assert by_team["A"]["tournament_points"] == 3
@@ -56,7 +61,7 @@ def test_teams_with_no_finished_match_still_appear_at_zero():
     t, (team_a, team_b, team_c) = make_tournament_and_teams(db, codes=("A", "B", "C"))
     make_finished_match(db, t.id, team_a.id, team_b.id, [(18, 10), (18, 12)])
 
-    standings = get_standings(t.id, db)
+    standings = standings_rows(t.id, db)
 
     assert len(standings) == 3
     by_team = {row["team"]: row for row in standings}
@@ -73,7 +78,7 @@ def test_final_match_does_not_count_toward_standings():
     t, (team_a, team_b) = make_tournament_and_teams(db)
     make_finished_match(db, t.id, team_a.id, team_b.id, [(18, 10), (18, 12)], is_final=True)
 
-    standings = get_standings(t.id, db)
+    standings = standings_rows(t.id, db)
 
     by_team = {row["team"]: row for row in standings}
     assert by_team["A"]["tournament_points"] == 0
@@ -92,7 +97,7 @@ def test_unfinished_match_does_not_count_toward_standings():
     db.add(TournamentSetResult(match_id=m.id, set_number=1, points_a=18, points_b=10, closed=True))
     db.commit()
 
-    standings = get_standings(t.id, db)
+    standings = standings_rows(t.id, db)
 
     by_team = {row["team"]: row for row in standings}
     assert by_team["A"]["tournament_points"] == 0
@@ -112,128 +117,11 @@ def test_encerrado_match_with_no_closed_sets_does_not_crash_standings():
     db.add(m)
     db.commit()
 
-    standings = get_standings(t.id, db)
+    standings = standings_rows(t.id, db)
 
     by_team = {row["team"]: row for row in standings}
     assert by_team["A"]["tournament_points"] == 0
     assert by_team["B"]["tournament_points"] == 0
-
-
-def test_generate_final_creates_match_from_top_two():
-    db = make_db()
-    t, (team_a, team_b, team_c) = make_tournament_and_teams(db, codes=("A", "B", "C"))
-    make_finished_match(db, t.id, team_a.id, team_b.id, [(18, 10), (18, 12)])  # A beats B: A+3
-    make_finished_match(db, t.id, team_a.id, team_c.id, [(18, 10), (18, 12)])  # A beats C: A+3 -> A=6
-    make_finished_match(db, t.id, team_b.id, team_c.id, [(18, 10), (18, 12)])  # B beats C: B+3 -> B=3, C=0
-
-    final = generate_final(
-        t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db
-    )
-
-    assert final.is_final is True
-    assert final.team_a_id == team_a.id
-    assert final.team_b_id == team_b.id
-
-
-def test_generate_final_rejects_when_group_stage_incomplete():
-    import pytest
-    from fastapi import HTTPException
-
-    db = make_db()
-    t, (team_a, team_b) = make_tournament_and_teams(db)
-    m = TournamentMatch(
-        tournament_id=t.id, team_a_id=team_a.id, team_b_id=team_b.id,
-        scheduled_at=datetime(2026, 11, 28, 13, 0), status="agendado",
-    )
-    db.add(m)
-    db.commit()
-
-    with pytest.raises(HTTPException) as exc_info:
-        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
-    assert exc_info.value.status_code == 400
-
-
-def test_generate_final_rejects_when_no_group_matches():
-    import pytest
-    from fastapi import HTTPException
-
-    db = make_db()
-    t, (team_a, team_b) = make_tournament_and_teams(db)
-
-    with pytest.raises(HTTPException) as exc_info:
-        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
-    assert exc_info.value.status_code == 400
-
-
-def test_generate_final_rejects_if_final_already_exists():
-    import pytest
-    from fastapi import HTTPException
-
-    db = make_db()
-    t, (team_a, team_b) = make_tournament_and_teams(db)
-    make_finished_match(db, t.id, team_a.id, team_b.id, [(18, 10), (18, 12)])
-    make_finished_match(db, t.id, team_a.id, team_b.id, [(10, 18), (12, 18)], is_final=True)
-
-    with pytest.raises(HTTPException) as exc_info:
-        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
-    assert exc_info.value.status_code == 409
-
-
-def test_generate_final_rejects_when_first_place_is_tied():
-    import pytest
-    from fastapi import HTTPException
-
-    db = make_db()
-    t, (team_a, team_b, team_c) = make_tournament_and_teams(db, codes=("A", "B", "C"))
-    make_finished_match(db, t.id, team_a.id, team_c.id, [(18, 10), (18, 10)])
-    make_finished_match(db, t.id, team_b.id, team_c.id, [(18, 10), (18, 10)])
-
-    with pytest.raises(HTTPException) as exc_info:
-        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
-    assert exc_info.value.status_code == 400
-
-
-def test_generate_final_rejects_when_second_place_is_tied():
-    # A wins both its matches clearly (1st, unverified). B and C each beat D
-    # with identical scores and never play each other, so they're fully
-    # tied for 2nd — generate_final must not arbitrarily pick one of them.
-    import pytest
-    from fastapi import HTTPException
-
-    db = make_db()
-    t, (team_a, team_b, team_c, team_d) = make_tournament_and_teams(db, codes=("A", "B", "C", "D"))
-    make_finished_match(db, t.id, team_a.id, team_b.id, [(18, 5), (18, 5)])
-    make_finished_match(db, t.id, team_a.id, team_c.id, [(18, 5), (18, 5)])
-    make_finished_match(db, t.id, team_b.id, team_d.id, [(18, 10), (18, 10)])
-    make_finished_match(db, t.id, team_c.id, team_d.id, [(18, 10), (18, 10)])
-
-    with pytest.raises(HTTPException) as exc_info:
-        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
-    assert exc_info.value.status_code == 400
-
-
-def test_generate_final_rejects_when_a_group_match_is_encerrado_without_a_decided_result():
-    # Regression: the "Encerrar" button can mark a match encerrado with no
-    # actual decided result (0 or 1 closed sets). Before this fix, that
-    # match's status alone satisfied the "group stage complete" check, and
-    # since get_standings silently drops it, both teams land on identical
-    # zero-stat fallback rows that are never flagged as tied — generate_final
-    # would then create a final from bogus data with no error at all.
-    import pytest
-    from fastapi import HTTPException
-
-    db = make_db()
-    t, (team_a, team_b) = make_tournament_and_teams(db)
-    m = TournamentMatch(
-        tournament_id=t.id, team_a_id=team_a.id, team_b_id=team_b.id,
-        scheduled_at=datetime(2026, 11, 28, 13, 0), status="encerrado",
-    )
-    db.add(m)
-    db.commit()
-
-    with pytest.raises(HTTPException) as exc_info:
-        generate_final(t.id, GenerateFinalRequest(scheduled_at=datetime(2026, 11, 29, 16, 20)), db)
-    assert exc_info.value.status_code == 400
 
 
 def test_encerrado_match_with_one_closed_set_does_not_crash_standings():
@@ -251,8 +139,89 @@ def test_encerrado_match_with_one_closed_set_does_not_crash_standings():
     db.add(TournamentSetResult(match_id=m.id, set_number=1, points_a=18, points_b=10, closed=True))
     db.commit()
 
-    standings = get_standings(t.id, db)
+    standings = standings_rows(t.id, db)
 
     by_team = {row["team"]: row for row in standings}
     assert by_team["A"]["tournament_points"] == 0
     assert by_team["B"]["tournament_points"] == 0
+
+
+def test_standings_are_split_by_group():
+    db = make_db()
+    t, (a, b, c, d) = make_tournament_and_teams(db, codes=("A", "B", "C", "D"), groups=("A", "A", "B", "B"))
+    make_finished_match(db, t.id, a.id, b.id, [(15, 10), (15, 12)])
+    make_finished_match(db, t.id, c.id, d.id, [(15, 10), (15, 12)])
+
+    groups = get_standings(t.id, db)
+
+    assert [g["group"] for g in groups] == ["A", "B"]
+    assert {r["team"] for r in groups[0]["rows"]} == {"A", "B"}
+    assert {r["team"] for r in groups[1]["rows"]} == {"C", "D"}
+    assert groups[0]["rows"][0]["team"] == "A"
+    assert groups[1]["rows"][0]["team"] == "C"
+
+
+def test_teams_without_a_group_go_in_a_trailing_block_and_never_qualify():
+    db = make_db()
+    t, (a, b, c) = make_tournament_and_teams(db, codes=("A", "B", "C"), groups=("A", "A", None))
+
+    groups = get_standings(t.id, db)
+
+    assert [g["group"] for g in groups] == ["A", None]
+    assert [r["team"] for r in groups[1]["rows"]] == ["C"]
+    assert all(r["qualified"] is False for r in groups[1]["rows"])
+
+
+def test_top_two_of_a_complete_group_qualify():
+    db = make_db()
+    t, (a, b, c) = make_tournament_and_teams(db, codes=("A", "B", "C"), groups=("A", "A", "A"))
+    make_finished_match(db, t.id, a.id, b.id, [(15, 10), (15, 12)])  # A: 3
+    make_finished_match(db, t.id, a.id, c.id, [(15, 10), (15, 12)])  # A: 6
+    make_finished_match(db, t.id, b.id, c.id, [(15, 10), (15, 12)])  # B: 3, C: 0
+
+    (group,) = get_standings(t.id, db)
+
+    assert group["complete"] is True
+    assert [(r["team"], r["qualified"]) for r in group["rows"]] == [("A", True), ("B", True), ("C", False)]
+
+
+def test_nobody_qualifies_while_the_group_still_has_games_to_play():
+    # A-B and B-C are done and the table already has a clear order, but A-C
+    # is still to play and could reshuffle it.
+    db = make_db()
+    t, (a, b, c) = make_tournament_and_teams(db, codes=("A", "B", "C"), groups=("A", "A", "A"))
+    make_finished_match(db, t.id, a.id, b.id, [(15, 10), (15, 12)])
+    make_finished_match(db, t.id, b.id, c.id, [(15, 10), (15, 12)])
+
+    (group,) = get_standings(t.id, db)
+
+    assert group["complete"] is False
+    assert all(r["qualified"] is False for r in group["rows"])
+
+
+def test_a_tie_for_the_last_spot_leaves_everyone_unqualified():
+    # Three-way cycle with identical scores (A beats B, B beats C, C beats A):
+    # everything ties, so picking two of the three would be arbitrary.
+    db = make_db()
+    t, (a, b, c) = make_tournament_and_teams(db, codes=("A", "B", "C"), groups=("A", "A", "A"))
+    make_finished_match(db, t.id, a.id, b.id, [(15, 10), (15, 10)])
+    make_finished_match(db, t.id, b.id, c.id, [(15, 10), (15, 10)])
+    make_finished_match(db, t.id, c.id, a.id, [(15, 10), (15, 10)])
+
+    (group,) = get_standings(t.id, db)
+
+    assert group["complete"] is True
+    assert all(r["tied"] for r in group["rows"])
+    assert all(r["qualified"] is False for r in group["rows"])
+
+
+def test_generate_final_is_disabled_until_semifinals_exist():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t, _ = make_tournament_and_teams(db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        generate_final(t.id, db)
+    assert exc_info.value.status_code == 409

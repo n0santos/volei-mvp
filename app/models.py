@@ -91,6 +91,7 @@ class Team(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"))
     code: Mapped[str] = mapped_column(String(20))
+    group_name: Mapped[str | None] = mapped_column(String(1), nullable=True)  # "A"/"B", set by hand after the draw
 
 
 class TeamPlayer(Base):

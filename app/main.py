@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, delete, func
 from sqlalchemy.orm import Session as DBSession
 
-from .database import Base, engine, get_db, SessionLocal
+from .database import Base, engine, get_db, SessionLocal, add_missing_columns
 from .models import Player, Session as GameSession, Attendance, Match, MatchPlayer, Event
 from .schemas import PlayerCreate, SessionCreate, AttendanceUpdate, SubstituteRequest, SwapRequest
 from .services.selection import select_players, eligible_players, BLOCK_AFTER, SHARE_WEIGHT
@@ -19,6 +19,7 @@ from .tournament import router as tournament_router
 from .tournament_matches import router as tournament_matches_router
 
 Base.metadata.create_all(bind=engine)
+add_missing_columns()
 
 app = FastAPI(title="Vôlei MVP")
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
