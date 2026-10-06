@@ -51,6 +51,7 @@ async function loadActiveTournament() {
     await loadState();
     await loadMatches();
     await loadStandings();
+    await loadPodium();
   } else {
     tournamentId = null;
     $("tournamentName").textContent = "Nenhum torneio ativo";
@@ -220,12 +221,21 @@ function populateTeamSelect(select, teams) {
   if (teams.some(t => String(t.id) === previous)) select.value = previous;
 }
 
+const STAGE_LABELS = {
+  semifinal_1: "Semifinal 1",
+  semifinal_2: "Semifinal 2",
+  terceiro_lugar: "3º lugar",
+  final: "Final",
+};
+
 let lastMatches = [];
+let lastStandings = [];
 
 async function loadMatches() {
   const matches = await api(`/api/tournaments/${tournamentId}/matches`);
   lastMatches = matches;
   renderMatches(matches);
+  updateKnockoutForms();
 }
 
 function renderMatches(matches) {
@@ -240,7 +250,7 @@ function renderMatch(m, isNext) {
       <div class="info">
         <div class="name">
           ${esc(m.team_a_code)} × ${esc(m.team_b_code)}
-          ${m.is_final ? '<span class="badge wait">Final</span>' : ""}
+          ${STAGE_LABELS[m.stage] ? `<span class="badge wait">${STAGE_LABELS[m.stage]}</span>` : ""}
         </div>
         <div class="muted">${when}${m.court ? " · " + esc(m.court) : ""} · ${m.status}</div>
       </div>
@@ -264,12 +274,12 @@ $("matchForm").addEventListener("submit", async e => {
         team_b_id: Number($("matchTeamB").value),
         scheduled_at: $("matchScheduledAt").value,
         court: $("matchCourt").value || null,
-        is_final: $("matchIsFinal").checked,
+        stage: $("matchStage").value,
       }),
     });
     $("matchScheduledAt").value = "";
     $("matchCourt").value = "";
-    $("matchIsFinal").checked = false;
+    $("matchStage").value = "grupos";
     await loadMatches();
   } catch (err) {
     toast(err.message);
@@ -302,8 +312,78 @@ $("matches").addEventListener("click", async e => {
 });
 
 async function loadStandings() {
-  renderStandings(await api(`/api/tournaments/${tournamentId}/standings`));
+  lastStandings = await api(`/api/tournaments/${tournamentId}/standings`);
+  renderStandings(lastStandings);
+  updateKnockoutForms();
 }
+
+function updateKnockoutForms() {
+  const byStage = stage => lastMatches.find(m => m.stage === stage);
+  const bothGroupsDone = ["A", "B"].every(name => lastStandings.some(g => g.group === name && g.complete));
+  const semis = [byStage("semifinal_1"), byStage("semifinal_2")];
+
+  $("generateSemisForm").classList.toggle("hidden", !(bothGroupsDone && !semis[0] && !semis[1]));
+  $("generateFinalsForm").classList.toggle("hidden", !(
+    semis.every(m => m && m.status === "encerrado") && !byStage("final") && !byStage("terceiro_lugar")
+  ));
+}
+
+async function loadPodium() {
+  const podium = await api(`/api/tournaments/${tournamentId}/podium`);
+  const places = [
+    ["🥇 Campeã", podium.champion],
+    ["🥈 Vice-campeã", podium.runner_up],
+    ["🥉 Terceira colocada", podium.third_place],
+  ].filter(([, team]) => team);
+  $("podiumSection").classList.toggle("hidden", places.length === 0);
+  $("podiumBody").innerHTML = places.map(([label, team]) => `
+    <div class="player"><div class="info"><div class="name">${label}: ${esc(team)}</div></div></div>
+  `).join("");
+}
+
+$("generateSemisForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const btn = e.target.querySelector("button");
+  btn.disabled = true;
+  try {
+    await api(`/api/tournaments/${tournamentId}/generate-semifinals`, {
+      method: "POST",
+      body: JSON.stringify({
+        semifinal_1_at: $("semi1At").value,
+        semifinal_2_at: $("semi2At").value,
+        court: $("semisCourt").value || null,
+      }),
+    });
+    e.target.reset();
+    await loadMatches();
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("generateFinalsForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const btn = e.target.querySelector("button");
+  btn.disabled = true;
+  try {
+    await api(`/api/tournaments/${tournamentId}/generate-finals`, {
+      method: "POST",
+      body: JSON.stringify({
+        third_place_at: $("thirdAt").value,
+        final_at: $("finalAt").value,
+        court: $("finalsCourt").value || null,
+      }),
+    });
+    e.target.reset();
+    await loadMatches();
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 function renderStandings(groups) {
   $("standingsBody").innerHTML = groups.map(g => `
@@ -333,6 +413,7 @@ setInterval(() => {
   // final" visibility check stuck on stale data indefinitely.
   loadMatches().catch(err => toast(err.message));
   loadStandings().catch(err => toast(err.message));
+  loadPodium().catch(err => toast(err.message));
 }, 8000);
 
 loadActiveTournament().catch(err => toast(err.message));

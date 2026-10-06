@@ -56,7 +56,7 @@ class TournamentMatchCreate(BaseModel):
     team_b_id: int
     scheduled_at: datetime
     court: str | None = None
-    is_final: bool = False
+    stage: str = "grupos"
 
 
 class TournamentMatchUpdate(BaseModel):
@@ -65,9 +65,21 @@ class TournamentMatchUpdate(BaseModel):
     scheduled_at: datetime | None = None
     court: str | None = None
     status: str | None = None
-    is_final: bool | None = None
+    stage: str | None = None
 
 
 class SetPointRequest(BaseModel):
     team: str
     delta: int
+
+
+class GenerateSemifinalsRequest(BaseModel):
+    semifinal_1_at: datetime
+    semifinal_2_at: datetime
+    court: str | None = None
+
+
+class GenerateFinalsRequest(BaseModel):
+    third_place_at: datetime
+    final_at: datetime
+    court: str | None = None

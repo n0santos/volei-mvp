@@ -116,7 +116,9 @@ class TournamentMatch(Base):
     scheduled_at: Mapped[datetime] = mapped_column(DateTime)
     court: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="agendado")  # agendado/em_andamento/encerrado
+    # Kept in sync with stage == "final": the column is NOT NULL in existing DBs.
     is_final: Mapped[bool] = mapped_column(Boolean, default=False)
+    stage: Mapped[str] = mapped_column(String(20), default="grupos", server_default="grupos")
 
 
 class TournamentSetResult(Base):

@@ -49,7 +49,13 @@
         <select id="matchTeamB" required></select>
         <input id="matchScheduledAt" type="datetime-local" required>
         <input id="matchCourt" placeholder="Quadra (opcional)">
-        <label><input type="checkbox" id="matchIsFinal"> Final</label>
+        <select id="matchStage">
+          <option value="grupos">Fase de grupos</option>
+          <option value="semifinal_1">Semifinal 1</option>
+          <option value="semifinal_2">Semifinal 2</option>
+          <option value="terceiro_lugar">3º lugar</option>
+          <option value="final">Final</option>
+        </select>
         <button class="primary">+ Jogo</button>
       </form>
       <div id="matches"></div>
@@ -58,6 +64,23 @@
     <section id="standingsSection" class="panel hidden">
       <h2>Classificação</h2>
       <div id="standingsBody" class="player-grid"></div>
+      <form id="generateSemisForm" class="inline hidden">
+        <label class="muted">Semifinal 1 <input id="semi1At" type="datetime-local" required></label>
+        <label class="muted">Semifinal 2 <input id="semi2At" type="datetime-local" required></label>
+        <input id="semisCourt" placeholder="Quadra (opcional)">
+        <button class="primary">Gerar semifinais</button>
+      </form>
+      <form id="generateFinalsForm" class="inline hidden">
+        <label class="muted">3º lugar <input id="thirdAt" type="datetime-local" required></label>
+        <label class="muted">Final <input id="finalAt" type="datetime-local" required></label>
+        <input id="finalsCourt" placeholder="Quadra (opcional)">
+        <button class="primary">Gerar 3º lugar e final</button>
+      </form>
+    </section>
+
+    <section id="podiumSection" class="panel hidden">
+      <h2>Pódio</h2>
+      <div id="podiumBody"></div>
     </section>
   </main>
 </div>

@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
 from app.models import Tournament, Team, TournamentMatch, TournamentSetResult
-from app.tournament_matches import get_standings, generate_final
+from app.tournament_matches import get_standings
 
 
 def make_db():
@@ -30,10 +30,10 @@ def standings_rows(tournament_id, db):
     return [row for g in get_standings(tournament_id, db) for row in g["rows"]]
 
 
-def make_finished_match(db, tournament_id, team_a_id, team_b_id, sets, is_final=False):
+def make_finished_match(db, tournament_id, team_a_id, team_b_id, sets, stage="grupos"):
     m = TournamentMatch(
         tournament_id=tournament_id, team_a_id=team_a_id, team_b_id=team_b_id,
-        scheduled_at=datetime(2026, 11, 28, 13, 0), status="encerrado", is_final=is_final,
+        scheduled_at=datetime(2026, 11, 28, 13, 0), status="encerrado", stage=stage, is_final=stage == "final",
     )
     db.add(m)
     db.flush()
@@ -76,7 +76,7 @@ def test_teams_with_no_finished_match_still_appear_at_zero():
 def test_final_match_does_not_count_toward_standings():
     db = make_db()
     t, (team_a, team_b) = make_tournament_and_teams(db)
-    make_finished_match(db, t.id, team_a.id, team_b.id, [(18, 10), (18, 12)], is_final=True)
+    make_finished_match(db, t.id, team_a.id, team_b.id, [(18, 10), (18, 12)], stage="final")
 
     standings = standings_rows(t.id, db)
 
@@ -213,15 +213,3 @@ def test_a_tie_for_the_last_spot_leaves_everyone_unqualified():
     assert group["complete"] is True
     assert all(r["tied"] for r in group["rows"])
     assert all(r["qualified"] is False for r in group["rows"])
-
-
-def test_generate_final_is_disabled_until_semifinals_exist():
-    import pytest
-    from fastapi import HTTPException
-
-    db = make_db()
-    t, _ = make_tournament_and_teams(db)
-
-    with pytest.raises(HTTPException) as exc_info:
-        generate_final(t.id, db)
-    assert exc_info.value.status_code == 409

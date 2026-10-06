@@ -22,6 +22,12 @@ class Base(DeclarativeBase):
 # after launch has to be ALTERed into existing DBs here: (table, column) -> type.
 MISSING_COLUMNS = {
     ("teams", "group_name"): "VARCHAR(1)",
+    ("tournament_matches", "stage"): "VARCHAR(20) NOT NULL DEFAULT 'grupos'",
+}
+
+# Run once, right after the column is added, to fill it from older data.
+BACKFILL = {
+    ("tournament_matches", "stage"): "UPDATE tournament_matches SET stage = 'final' WHERE is_final = 1",
 }
 
 
@@ -31,6 +37,8 @@ def add_missing_columns():
             existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
             if existing and column not in existing:
                 conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
+                if (table, column) in BACKFILL:
+                    conn.exec_driver_sql(BACKFILL[(table, column)])
 
 
 def get_db():
