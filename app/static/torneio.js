@@ -41,6 +41,29 @@ function fmtDate(s) {
 
 const TABS = ["jogos", "classificacao", "equipes"];
 
+// The tournament runs on known days (groups on the first, the knockout on the
+// last), so games are placed by day + time instead of a free date field.
+let tournamentDays = [];
+
+function daysBetween(start, end) {
+  const days = [];
+  const day = new Date(`${start}T12:00:00`);
+  const last = new Date(`${end}T12:00:00`);
+  for (; day <= last; day.setDate(day.getDate() + 1)) days.push(day.toLocaleDateString("sv-SE"));
+  return days;
+}
+
+function dayLabel(iso) {
+  return new Date(`${iso}T12:00:00`)
+    .toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" });
+}
+
+function fillDayOptions() {
+  $("matchDay").innerHTML = tournamentDays.map(d => `<option value="${d}">${dayLabel(d)}</option>`).join("");
+}
+
+const lastDay = () => tournamentDays[tournamentDays.length - 1];
+
 // The tab lives in the URL hash (/torneio#equipes), so a reload or a shared
 // link opens the same one; the panes themselves are hidden by CSS.
 function selectTab(name) {
@@ -65,6 +88,8 @@ async function loadActiveTournament() {
   const t = await api("/api/tournaments/active");
   if (t) {
     tournamentId = t.id;
+    tournamentDays = daysBetween(t.start_date, t.end_date);
+    fillDayOptions();
     $("tournamentName").textContent = `${t.name} (${fmtDate(t.start_date)} a ${fmtDate(t.end_date)})`;
     $("newTournament").classList.add("hidden");
     $("tabs").classList.remove("hidden");
@@ -93,6 +118,10 @@ async function loadState() {
 
   populateTeamSelect($("matchTeamA"), state.teams);
   populateTeamSelect($("matchTeamB"), state.teams);
+  // Open with two different teams instead of the same one on both sides
+  if (state.teams.length > 1 && $("matchTeamA").value === $("matchTeamB").value) {
+    $("matchTeamB").value = String(state.teams.find(t => String(t.id) !== $("matchTeamA").value).id);
+  }
 }
 
 function renderTeams(teams) {
@@ -379,7 +408,6 @@ function renderFixture(m, isNext, showDay) {
         <span class="chip ${m.status === "em_andamento" ? "live" : m.status === "encerrado" ? "done" : ""}">${status}</span>
         ${isNext ? '<span class="chip next">A seguir</span>' : ""}
         ${m.walkover ? '<span class="chip">W.O.</span>' : ""}
-        ${m.court ? `<span class="fx-court">${esc(m.court)}</span>` : ""}
       </div>
       <div class="fx-actions">
         <a class="btn${m.status === "em_andamento" ? " primary" : ""}" href="/torneio/partidas/${m.id}">Placar</a>
@@ -421,13 +449,11 @@ $("matchForm").addEventListener("submit", async e => {
       body: JSON.stringify({
         team_a_id: Number($("matchTeamA").value),
         team_b_id: Number($("matchTeamB").value),
-        scheduled_at: $("matchScheduledAt").value,
-        court: $("matchCourt").value || null,
+        scheduled_at: `${$("matchDay").value}T${$("matchTime").value}`,
         stage: $("matchStage").value,
       }),
     });
-    $("matchScheduledAt").value = "";
-    $("matchCourt").value = "";
+    $("matchTime").value = "";
     $("matchStage").value = "grupos";
     setMatchFormOpen(false);
     await loadMatches();
@@ -501,6 +527,9 @@ function updateKnockoutForms() {
 
   const showSemis = bothGroupsDone && !semis[0] && !semis[1];
   const showFinals = semis.every(m => m && m.status === "encerrado") && !byStage("final") && !byStage("terceiro_lugar");
+  const when = tournamentDays.length ? ` de ${dayLabel(lastDay())}` : "";
+  $("semisHint").textContent = `Os dois grupos terminaram. Confirme os horários das semifinais${when}.`;
+  $("finalsHint").textContent = `As semifinais terminaram. Confirme os horários do 3º lugar e da final${when}.`;
   $("generateSemisForm").classList.toggle("hidden", !showSemis);
   $("generateFinalsForm").classList.toggle("hidden", !showFinals);
   $("finalEmpty").classList.toggle("hidden", showSemis || showFinals || lastMatches.some(m => m.stage !== "grupos"));
@@ -531,9 +560,8 @@ $("generateSemisForm").addEventListener("submit", async e => {
     await api(`/api/tournaments/${tournamentId}/generate-semifinals`, {
       method: "POST",
       body: JSON.stringify({
-        semifinal_1_at: $("semi1At").value,
-        semifinal_2_at: $("semi2At").value,
-        court: $("semisCourt").value || null,
+        semifinal_1_at: `${lastDay()}T${$("semi1At").value}`,
+        semifinal_2_at: `${lastDay()}T${$("semi2At").value}`,
       }),
     });
     e.target.reset();
@@ -553,9 +581,8 @@ $("generateFinalsForm").addEventListener("submit", async e => {
     await api(`/api/tournaments/${tournamentId}/generate-finals`, {
       method: "POST",
       body: JSON.stringify({
-        third_place_at: $("thirdAt").value,
-        final_at: $("finalAt").value,
-        court: $("finalsCourt").value || null,
+        third_place_at: `${lastDay()}T${$("thirdAt").value}`,
+        final_at: `${lastDay()}T${$("finalAt").value}`,
       }),
     });
     e.target.reset();
