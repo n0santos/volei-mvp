@@ -273,7 +273,7 @@ async def add_player_to_session(session_id: int, data: PlayerCreate, db: DBSessi
     get_session(db, session_id)
     name = data.name.strip()
     # Match by name case-insensitively so a mid-session typo in capitalization
-    # (e.g. "Daniela Lima" vs. the roster's "Daniela lima") doesn't spawn a
+    # (e.g. "Maria Souza" vs. the roster's "Maria souza") doesn't spawn a
     # duplicate Player with default score/gender instead of reusing the real one.
     p = db.execute(
         select(Player).where(func.lower(Player.name) == func.lower(name))

@@ -54,7 +54,7 @@ function esc(s) {
   }[c]));
 }
 
-// Lowercase + strip accents, so "cecilia" finds "Cecília" — useful with ~60
+// Lowercase + strip accents, so "jose" finds "José" — useful with ~60
 // names on the pre-list and phone keyboards that don't default to accents.
 function normalize(s) {
   return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();

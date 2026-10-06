@@ -10,7 +10,7 @@ O app **não funciona sem um cadastro prévio**. Para cada pessoa do grupo você
 
 | Campo | O que é |
 |---|---|
-| **Nome** | Único. Se houver dois nomes iguais, diferencie (ex.: `Silvana (2)`). |
+| **Nome** | Único. Se houver dois nomes iguais, diferencie (ex.: `Ana (2)`). |
 | **Gênero** | `M` ou `F` — usado para distribuir homens e mulheres entre os times. |
 | **Score** | Nível de jogo, numa escala de ~40 (iniciante) a ~95 (muito forte). |
 

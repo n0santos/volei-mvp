@@ -105,15 +105,15 @@ def test_marking_expected_undoes_a_wrong_check_in():
 
 
 def test_add_player_matches_existing_name_regardless_of_case():
-    # Regression: "Daniela lima" already in the roster, someone typed
-    # "Daniela Lima" mid-session and add-player created a second Player
+    # Regression: "Maria souza" already in the roster, someone typed
+    # "Maria Souza" mid-session and add-player created a second Player
     # record (with default score/gender) instead of recognizing the same
     # person, leaving a phantom duplicate in the pre-list.
     db = make_db()
-    session, (existing,) = make_session(db, ["Daniela lima"])
+    session, (existing,) = make_session(db, ["Maria souza"])
 
     p = asyncio.run(add_player_to_session(
-        session.id, PlayerCreate(name="Daniela Lima"), db
+        session.id, PlayerCreate(name="Maria Souza"), db
     ))
 
     assert p.id == existing.id
