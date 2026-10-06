@@ -83,3 +83,7 @@ class GenerateFinalsRequest(BaseModel):
     third_place_at: datetime
     final_at: datetime
     court: str | None = None
+
+
+class WalkoverRequest(BaseModel):
+    present: str  # the team that showed up and wins: "a" or "b"

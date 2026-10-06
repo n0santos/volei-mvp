@@ -8,7 +8,7 @@ from .database import get_db
 from .models import Team, TournamentMatch, TournamentSetResult
 from .schemas import (
     TournamentMatchCreate, TournamentMatchUpdate, SetPointRequest,
-    GenerateSemifinalsRequest, GenerateFinalsRequest,
+    GenerateSemifinalsRequest, GenerateFinalsRequest, WalkoverRequest,
 )
 from .services.tournament_engine import SET_TARGETS, is_set_over, match_result, compute_standings, mark_qualified
 from .tournament import get_tournament
@@ -20,6 +20,10 @@ MATCH_STATUSES = {"agendado", "em_andamento", "encerrado"}
 STAGES = {"grupos", "semifinal_1", "semifinal_2", "terceiro_lugar", "final"}
 # Knockout stages happen once per tournament; group games repeat.
 KNOCKOUT_STAGES = STAGES - {"grupos"}
+# Position in the tournament: a stage can't be undone once a later one exists.
+STAGE_ORDER = {"grupos": 0, "semifinal_1": 1, "semifinal_2": 1, "terceiro_lugar": 2, "final": 2}
+
+WALKOVER_POINTS = 15  # regulation: a W.O. is 2x0 with partials of 15x0 and 15x0
 
 
 def get_tournament_team(db, tournament_id, team_id):
@@ -96,6 +100,7 @@ def list_matches(tournament_id: int, db: DBSession = Depends(get_db)):
             "status": m.status,
             "is_final": m.is_final,
             "stage": m.stage,
+            "walkover": m.walkover,
         }
         for m in matches
     ]
@@ -182,6 +187,46 @@ def serialize_set(s):
     return {"set_number": s.set_number, "points_a": s.points_a, "points_b": s.points_b, "closed": s.closed}
 
 
+@router.post("/api/tournaments/{tournament_id}/matches/{match_id}/walkover")
+def set_walkover(tournament_id: int, match_id: int, data: WalkoverRequest, db: DBSession = Depends(get_db)):
+    m = get_match(db, tournament_id, match_id)
+    if data.present not in ("a", "b"):
+        raise HTTPException(400, "present precisa ser 'a' ou 'b'")
+    if db.execute(select(TournamentSetResult).where(TournamentSetResult.match_id == m.id)).first():
+        raise HTTPException(409, "O jogo já tem placar registrado")
+
+    points_a, points_b = (WALKOVER_POINTS, 0) if data.present == "a" else (0, WALKOVER_POINTS)
+    for set_number in (1, 2):
+        db.add(TournamentSetResult(
+            match_id=m.id, set_number=set_number, points_a=points_a, points_b=points_b, closed=True,
+        ))
+    m.status = "encerrado"
+    m.walkover = True
+    db.commit()
+    db.refresh(m)
+    return m
+
+
+@router.delete("/api/tournaments/{tournament_id}/matches/{match_id}/walkover")
+def undo_walkover(tournament_id: int, match_id: int, db: DBSession = Depends(get_db)):
+    m = get_match(db, tournament_id, match_id)
+    if not m.walkover:
+        raise HTTPException(409, "Este jogo não foi decidido por W.O.")
+
+    later = db.execute(
+        select(TournamentMatch).where(TournamentMatch.tournament_id == tournament_id)
+    ).scalars().all()
+    if any(STAGE_ORDER[other.stage] > STAGE_ORDER[m.stage] for other in later):
+        raise HTTPException(409, "Já existem jogos de fases seguintes; não dá para desfazer este W.O.")
+
+    db.execute(delete(TournamentSetResult).where(TournamentSetResult.match_id == m.id))
+    m.status = "agendado"
+    m.walkover = False
+    db.commit()
+    db.refresh(m)
+    return m
+
+
 @router.get("/api/tournaments/{tournament_id}/matches/{match_id}/scoreboard")
 def get_scoreboard(tournament_id: int, match_id: int, db: DBSession = Depends(get_db)):
     m = get_match(db, tournament_id, match_id)
@@ -203,7 +248,7 @@ def get_scoreboard(tournament_id: int, match_id: int, db: DBSession = Depends(ge
         }
 
     return {
-        "match": {"id": m.id, "status": m.status, "is_final": m.is_final, "stage": m.stage},
+        "match": {"id": m.id, "status": m.status, "is_final": m.is_final, "stage": m.stage, "walkover": m.walkover},
         "sets": [serialize_set(s) for s in all_sets],
         "current_set": current_set,
         "result": result,

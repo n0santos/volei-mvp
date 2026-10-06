@@ -119,6 +119,9 @@ class TournamentMatch(Base):
     # Kept in sync with stage == "final": the column is NOT NULL in existing DBs.
     is_final: Mapped[bool] = mapped_column(Boolean, default=False)
     stage: Mapped[str] = mapped_column(String(20), default="grupos", server_default="grupos")
+    # Decided by W.O.: stored as two closed 15x0 sets so every result/standings
+    # path treats it like any other 2x0, this flag only labels it.
+    walkover: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
 class TournamentSetResult(Base):

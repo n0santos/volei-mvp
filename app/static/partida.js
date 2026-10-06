@@ -56,7 +56,7 @@ function renderBoard(match, board) {
     document.querySelectorAll(".score-btn").forEach(b => b.classList.add("hidden"));
     $("resultBanner").classList.remove("hidden");
     $("resultBanner").textContent =
-      `Vencedor: ${board.result.winner === "A" ? match.team_a_code : match.team_b_code} (${board.result.sets_a}×${board.result.sets_b})`;
+      `${board.match.walkover ? "Vencedor por W.O." : "Vencedor"}: ${board.result.winner === "A" ? match.team_a_code : match.team_b_code} (${board.result.sets_a}×${board.result.sets_b})`;
     return;
   }
 

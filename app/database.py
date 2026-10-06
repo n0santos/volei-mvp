@@ -23,6 +23,7 @@ class Base(DeclarativeBase):
 MISSING_COLUMNS = {
     ("teams", "group_name"): "VARCHAR(1)",
     ("tournament_matches", "stage"): "VARCHAR(20) NOT NULL DEFAULT 'grupos'",
+    ("tournament_matches", "walkover"): "BOOLEAN NOT NULL DEFAULT 0",
 }
 
 # Run once, right after the column is added, to fill it from older data.

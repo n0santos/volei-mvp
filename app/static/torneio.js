@@ -251,11 +251,19 @@ function renderMatch(m, isNext) {
         <div class="name">
           ${esc(m.team_a_code)} × ${esc(m.team_b_code)}
           ${STAGE_LABELS[m.stage] ? `<span class="badge wait">${STAGE_LABELS[m.stage]}</span>` : ""}
+          ${m.walkover ? '<span class="badge">W.O.</span>' : ""}
         </div>
         <div class="muted">${when}${m.court ? " · " + esc(m.court) : ""} · ${m.status}</div>
       </div>
       <div class="actions">
         <a href="/torneio/partidas/${m.id}"><button>Placar</button></a>
+        ${m.status !== "encerrado" ? `
+          <select data-action="walkover" data-match-id="${m.id}" title="Registrar W.O.">
+            <option value="">W.O.…</option>
+            <option value="b">${esc(m.team_a_code)} ausente (${esc(m.team_b_code)} vence)</option>
+            <option value="a">${esc(m.team_b_code)} ausente (${esc(m.team_a_code)} vence)</option>
+          </select>` : ""}
+        ${m.walkover ? `<button data-action="undo-walkover" data-match-id="${m.id}">Desfazer W.O.</button>` : ""}
         ${m.status === "agendado" ? `<button data-action="start" data-match-id="${m.id}">Iniciar</button>` : ""}
         ${m.status === "em_andamento" ? `<button data-action="finish" data-match-id="${m.id}">Encerrar</button>` : ""}
         <button class="danger" data-action="remove-match" data-match-id="${m.id}">Remover</button>
@@ -304,9 +312,35 @@ $("matches").addEventListener("click", async e => {
       });
     } else if (action === "remove-match") {
       await api(`/api/tournaments/${tournamentId}/matches/${matchId}`, { method: "DELETE" });
+    } else if (action === "undo-walkover") {
+      await api(`/api/tournaments/${tournamentId}/matches/${matchId}/walkover`, { method: "DELETE" });
     }
     await loadMatches();
+    await loadStandings();
   } catch (err) {
+    toast(err.message);
+  }
+});
+
+$("matches").addEventListener("change", async e => {
+  const select = e.target.closest("select[data-action='walkover']");
+  if (!select || !select.value) return;
+  const present = select.value;
+  const label = select.options[select.selectedIndex].text;
+  if (!confirm(`Registrar W.O.: ${label}? O jogo termina 2×0 (15×0 e 15×0).`)) {
+    select.value = "";
+    return;
+  }
+  try {
+    await api(`/api/tournaments/${tournamentId}/matches/${select.dataset.matchId}/walkover`, {
+      method: "POST",
+      body: JSON.stringify({ present }),
+    });
+    await loadMatches();
+    await loadStandings();
+    await loadPodium();
+  } catch (err) {
+    select.value = "";
     toast(err.message);
   }
 });
