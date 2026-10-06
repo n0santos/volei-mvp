@@ -88,6 +88,8 @@ def list_matches(tournament_id: int, db: DBSession = Depends(get_db)):
         for team in db.execute(select(Team).where(Team.tournament_id == tournament_id)).scalars()
     }
 
+    results = {m.id: decided_result(db, m.id) for m in matches}
+
     return [
         {
             "id": m.id,
@@ -101,6 +103,8 @@ def list_matches(tournament_id: int, db: DBSession = Depends(get_db)):
             "is_final": m.is_final,
             "stage": m.stage,
             "walkover": m.walkover,
+            "sets_a": results[m.id]["sets_a"] if results[m.id] else None,
+            "sets_b": results[m.id]["sets_b"] if results[m.id] else None,
         }
         for m in matches
     ]

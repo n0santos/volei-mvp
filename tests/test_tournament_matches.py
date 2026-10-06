@@ -434,3 +434,23 @@ def test_set_results_unique_per_match_and_set_number():
         assert False, "expected IntegrityError"
     except IntegrityError:
         db.rollback()
+
+
+def test_list_matches_reports_the_sets_of_decided_matches_only():
+    db = make_db()
+    t, team_a, team_b = make_tournament_and_teams(db)
+    decided = make_match(db, t.id, team_a.id, team_b.id)
+    open_match = make_match(db, t.id, team_a.id, team_b.id)
+    for _ in range(15):
+        add_point(t.id, decided.id, SetPointRequest(team="a", delta=1), db)
+    close_set(t.id, decided.id, db)
+    for _ in range(15):
+        add_point(t.id, decided.id, SetPointRequest(team="a", delta=1), db)
+    close_set(t.id, decided.id, db)
+    add_point(t.id, open_match.id, SetPointRequest(team="a", delta=1), db)
+
+    by_id = {m["id"]: m for m in list_matches(t.id, db)}
+
+    assert (by_id[decided.id]["sets_a"], by_id[decided.id]["sets_b"]) == (2, 0)
+    assert (by_id[open_match.id]["sets_a"], by_id[open_match.id]["sets_b"]) == (None, None)
+

@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<body class="torneio">
 <header class="site-header">
   <div class="inner">
     <div>
@@ -47,47 +47,68 @@
       <div id="teams"></div>
     </section>
 
-    <section id="matchesSection" class="panel tab-pane hidden" data-pane="jogos">
-      <h2>Jogos</h2>
-      <form id="matchForm" class="inline">
-        <select id="matchTeamA" required></select>
-        <span>×</span>
-        <select id="matchTeamB" required></select>
-        <input id="matchScheduledAt" type="datetime-local" required>
-        <input id="matchCourt" placeholder="Quadra (opcional)">
-        <select id="matchStage">
-          <option value="grupos">Fase de grupos</option>
-          <option value="semifinal_1">Semifinal 1</option>
-          <option value="semifinal_2">Semifinal 2</option>
-          <option value="terceiro_lugar">3º lugar</option>
-          <option value="final">Final</option>
-        </select>
-        <button class="primary">+ Jogo</button>
-      </form>
-      <div id="matches"></div>
-    </section>
+    <div id="matchesSection" class="tab-pane hidden" data-pane="jogos">
+      <section class="panel">
+        <div class="stage-head">
+          <div>
+            <h2>Fase de grupos</h2>
+            <div id="groupProgress" class="muted"></div>
+          </div>
+          <button type="button" id="addMatchToggle" class="primary" aria-expanded="false" aria-controls="matchForm">+ Jogo</button>
+        </div>
+        <form id="matchForm" class="match-form hidden">
+          <label>Equipe A <select id="matchTeamA" required></select></label>
+          <label>Equipe B <select id="matchTeamB" required></select></label>
+          <label>Data e horário <input id="matchScheduledAt" type="datetime-local" required></label>
+          <label>Quadra <input id="matchCourt" placeholder="Opcional"></label>
+          <label>Fase
+            <select id="matchStage">
+              <option value="grupos">Fase de grupos</option>
+              <option value="semifinal_1">Semifinal 1</option>
+              <option value="semifinal_2">Semifinal 2</option>
+              <option value="terceiro_lugar">3º lugar</option>
+              <option value="final">Final</option>
+            </select>
+          </label>
+          <button class="primary">Adicionar jogo</button>
+        </form>
+        <div id="groupMatches" class="fixtures"></div>
+      </section>
 
-    <section id="standingsSection" class="panel tab-pane hidden" data-pane="classificacao">
-      <h2>Classificação</h2>
-      <div id="standingsBody" class="player-grid"></div>
-      <form id="generateSemisForm" class="inline hidden">
-        <label class="muted">Semifinal 1 <input id="semi1At" type="datetime-local" required></label>
-        <label class="muted">Semifinal 2 <input id="semi2At" type="datetime-local" required></label>
-        <input id="semisCourt" placeholder="Quadra (opcional)">
-        <button class="primary">Gerar semifinais</button>
-      </form>
-      <form id="generateFinalsForm" class="inline hidden">
-        <label class="muted">3º lugar <input id="thirdAt" type="datetime-local" required></label>
-        <label class="muted">Final <input id="finalAt" type="datetime-local" required></label>
-        <input id="finalsCourt" placeholder="Quadra (opcional)">
-        <button class="primary">Gerar 3º lugar e final</button>
-      </form>
-    </section>
+      <section class="panel">
+        <div class="stage-head">
+          <div>
+            <h2>Fase final</h2>
+            <div class="muted">Semifinais, 3º lugar e final</div>
+          </div>
+        </div>
+        <form id="generateSemisForm" class="action-panel hidden">
+          <p>Os dois grupos terminaram. Defina os horários das semifinais.</p>
+          <label>Semifinal 1 <input id="semi1At" type="datetime-local" required></label>
+          <label>Semifinal 2 <input id="semi2At" type="datetime-local" required></label>
+          <label>Quadra <input id="semisCourt" placeholder="Opcional"></label>
+          <button class="primary">Gerar semifinais</button>
+        </form>
+        <form id="generateFinalsForm" class="action-panel hidden">
+          <p>As semifinais terminaram. Defina os horários do 3º lugar e da final.</p>
+          <label>3º lugar <input id="thirdAt" type="datetime-local" required></label>
+          <label>Final <input id="finalAt" type="datetime-local" required></label>
+          <label>Quadra <input id="finalsCourt" placeholder="Opcional"></label>
+          <button class="primary">Gerar 3º lugar e final</button>
+        </form>
+        <div id="finalMatches" class="fixtures"></div>
+        <p id="finalEmpty" class="empty">A fase final começa quando os dois grupos terminarem.</p>
+      </section>
+    </div>
 
-    <section id="podiumSection" class="panel tab-pane hidden" data-pane="classificacao">
-      <h2>Pódio</h2>
-      <div id="podiumBody"></div>
-    </section>
+    <div id="standingsSection" class="tab-pane hidden" data-pane="classificacao">
+      <section id="podiumSection" class="panel hidden">
+        <h2>Pódio</h2>
+        <ol id="podiumBody" class="podium"></ol>
+      </section>
+      <div id="standingsBody" class="group-tables"></div>
+      <p class="legend muted">J jogos, V vitórias, SS saldo de sets, SP saldo de pontos, Pts pontos. Os dois primeiros de cada grupo avançam.</p>
+    </div>
   </main>
 </div>
 <div id="toast"></div>

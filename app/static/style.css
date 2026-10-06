@@ -207,3 +207,272 @@ body[data-tab="equipes"] .tab-pane:not([data-pane="equipes"]) { display:none; }
 .score-value { font-family: var(--font-display); font-size: 64px; font-weight:700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .score-btn { font-size: 26px; padding: 16px 26px; min-width: 64px; }
 .sets-history { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+
+/* ── Torneio ─────────────────────────────────────────────────────────────
+   Everything below is scoped to body.torneio so the pelada pages keep
+   their look. Two accents join the app palette: palm for wins and
+   qualification, sun for the podium. */
+body.torneio {
+  --palm: #1f7a4c;
+  --palm-tint: #e6f3ec;
+  --sun: #e3a21a;
+  --sun-tint: #fbf1d5;
+  --mute: #5b6b7a;
+}
+
+.torneio .tabs {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--sand);
+  padding: 8px 0;
+  margin-bottom: 0;
+}
+
+.torneio .btn {
+  display: inline-block;
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 10px 13px;
+  cursor: pointer;
+  text-decoration: none;
+  font: inherit;
+  line-height: normal;
+}
+.torneio .btn:hover { background: var(--sand); }
+.torneio .btn.primary { background: var(--court); color: white; border-color: transparent; font-weight: 600; }
+.torneio .btn.primary:hover { background: var(--court-dark); }
+.torneio summary.btn { list-style: none; }
+.torneio summary.btn::-webkit-details-marker { display: none; }
+
+.torneio .stage-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.torneio .stage-head h2 { margin-bottom: 2px; }
+
+.torneio .empty {
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--mute);
+  text-align: center;
+}
+
+.torneio .match-form,
+.torneio .action-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  align-items: end;
+  background: var(--sand);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.torneio .action-panel p { grid-column: 1 / -1; margin: 0; font-weight: 600; }
+.torneio .match-form label,
+.torneio .action-panel label,
+.torneio .tournament-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--mute);
+}
+
+/* Jogos: one aligned row per match, teams mirrored around a central axis */
+.torneio .fixtures { display: flex; flex-direction: column; }
+.torneio .fixture {
+  display: grid;
+  /* fixed actions column: the axis between the teams sits at the same x in every row */
+  grid-template-columns: 4.6rem minmax(0, 1fr) 15rem;
+  grid-template-areas: "when teams actions" "when meta actions";
+  column-gap: 16px;
+  row-gap: 6px;
+  align-items: center;
+  padding: 14px 8px 14px 12px;
+  border-top: 1px solid var(--border);
+  border-left: 3px solid transparent;
+}
+.torneio .fixture:first-child { border-top: 0; }
+.torneio .fixture.next { border-left-color: var(--court); background: #f1f8fa; }
+.torneio .fixture.encerrado .fx-time { color: var(--mute); }
+
+.torneio .fx-when { grid-area: when; }
+.torneio .fx-time {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.torneio .fx-day { font-size: 12px; color: var(--mute); }
+
+.torneio .fx-teams {
+  grid-area: teams;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3.4rem minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.2;
+}
+.torneio .fx-team.a { text-align: right; }
+.torneio .fx-team.b { text-align: left; }
+.torneio .fx-team.won { color: var(--palm); }
+.torneio .fx-team.lost { color: var(--mute); font-weight: 500; }
+.torneio .fx-score {
+  text-align: center;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+}
+.torneio .fixture.encerrado .fx-score { color: var(--ink); font-size: 20px; }
+
+.torneio .fx-meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--mute);
+}
+.torneio .chip {
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: var(--sand);
+  color: var(--ink);
+}
+.torneio .chip.live { background: var(--ball); color: white; }
+.torneio .chip.done { background: var(--palm-tint); color: var(--palm); }
+.torneio .chip.next { background: var(--court); color: white; }
+
+.torneio .fx-actions {
+  grid-area: actions;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+/* keep the teams close to the time and the buttons on wide screens */
+.torneio .fx-teams,
+.torneio .fx-meta {
+  width: 100%;
+  max-width: 720px;
+  justify-self: center;
+}
+
+.torneio details.more { position: relative; }
+.torneio .more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(22, 35, 59, .16);
+}
+
+/* Classificação */
+.torneio .group-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 0 16px;
+  align-items: start;
+}
+.torneio .st-row {
+  display: grid;
+  grid-template-columns: 1.9rem minmax(0, 1fr) 1.7rem 1.7rem 2.3rem 2.7rem 2.7rem;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.torneio .st-row > :nth-child(2) { text-align: left; }
+.torneio .st-row.st-head {
+  border-top: 0;
+  padding: 0 0 6px;
+  font-size: 12px;
+  color: var(--mute);
+}
+.torneio .st-pos {
+  width: 1.7rem;
+  height: 1.7rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-weight: 700;
+  color: var(--mute);
+}
+.torneio .st-row.qualified .st-pos { background: var(--palm); color: white; }
+.torneio .st-team {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.torneio .st-team .note { display: block; font-family: var(--font-body); font-weight: 500; font-size: 12px; }
+.torneio .st-team .note.ok { color: var(--palm); }
+.torneio .st-team .note.tie { color: var(--ball); }
+.torneio .st-row strong { font-family: var(--font-display); font-size: 18px; }
+.torneio .legend { margin: 4px 2px 0; }
+
+.torneio .podium { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.torneio .place {
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.torneio .place-n { font-family: var(--font-display); font-weight: 700; font-size: 22px; }
+.torneio .place-team { font-family: var(--font-display); font-weight: 700; font-size: 18px; }
+.torneio .place-label { font-size: 13px; color: var(--mute); }
+.torneio .place.gold { background: var(--sun-tint); border-color: var(--sun); }
+.torneio .place.gold .place-team { font-size: 22px; }
+
+@media (min-width: 701px) {
+  .torneio .tabs button { flex: 0 0 auto; padding: 10px 26px; }
+}
+
+@media (max-width: 700px) {
+  .torneio .fixture {
+    grid-template-columns: 4rem minmax(0, 1fr);
+    grid-template-areas: "when actions" "teams teams" "meta meta";
+    row-gap: 10px;
+  }
+  .torneio .fx-actions { justify-self: end; }
+  .torneio .fx-teams { font-size: 17px; }
+  .torneio .group-tables { grid-template-columns: 1fr; }
+  .torneio .st-row { grid-template-columns: 1.9rem minmax(0, 1fr) 1.5rem 1.5rem 2.1rem 2.5rem 2.3rem; }
+  .torneio .st-team { font-size: 15px; }
+  .torneio .place { grid-template-columns: 2.4rem minmax(0, 1fr); row-gap: 2px; }
+  .torneio .place-n { grid-row: 1 / span 2; }
+  .torneio .place-label { grid-column: 2; }
+  .torneio .more-menu { right: 0; min-width: min(240px, 80vw); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .torneio .tabs button { transition: background-color .15s; }
+}

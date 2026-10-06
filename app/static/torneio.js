@@ -88,6 +88,7 @@ async function loadActiveTournament() {
 
 async function loadState() {
   const state = await api(`/api/tournaments/${tournamentId}`);
+  lastTeams = state.teams;
   $("teams").innerHTML = state.teams.map(renderTeam).join("");
 
   populateTeamSelect($("matchTeamA"), state.teams);
@@ -260,8 +261,13 @@ const STAGE_LABELS = {
   final: "Final",
 };
 
+const STATUS_LABELS = { agendado: "Agendado", em_andamento: "Em andamento", encerrado: "Encerrado" };
+const STAGE_ORDER = { semifinal_1: 1, semifinal_2: 1, terceiro_lugar: 2, final: 3 };
+
 let lastMatches = [];
 let lastStandings = [];
+let lastTeams = [];
+let lastRendered = "";
 
 async function loadMatches() {
   const matches = await api(`/api/tournaments/${tournamentId}/matches`);
@@ -270,39 +276,102 @@ async function loadMatches() {
   updateKnockoutForms();
 }
 
-function renderMatches(matches) {
-  const next = matches.find(m => m.status !== "encerrado");
-  $("matches").innerHTML = matches.map(m => renderMatch(m, next && m.id === next.id)).join("");
+function groupLabel(m) {
+  const team = lastTeams.find(t => t.id === m.team_a_id);
+  return team && team.group_name ? `Grupo ${team.group_name}` : "Sem grupo";
 }
 
-function renderMatch(m, isNext) {
-  const when = new Date(m.scheduled_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+function renderMatches(matches) {
+  // The 8s poll re-renders; skip it when nothing changed so an open "Mais"
+  // menu or a half-chosen W.O. isn't wiped out from under the organizer.
+  const key = JSON.stringify([matches, lastTeams.map(t => [t.id, t.group_name])]);
+  if (key === lastRendered) return;
+  lastRendered = key;
+
+  const next = matches.find(m => m.status !== "encerrado");
+  const groupStage = matches.filter(m => m.stage === "grupos");
+  const finalStage = matches
+    .filter(m => m.stage !== "grupos")
+    .sort((a, b) => STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] || a.scheduled_at.localeCompare(b.scheduled_at));
+  // The day only shows when it changes, so a day of games isn't a column of repeated dates.
+  const fixtures = list => {
+    let previousDay = null;
+    return list.map(m => {
+      const day = m.scheduled_at.slice(0, 10);
+      const showDay = day !== previousDay;
+      previousDay = day;
+      return renderFixture(m, next && m.id === next.id, showDay);
+    }).join("");
+  };
+
+  $("groupMatches").innerHTML = groupStage.length
+    ? fixtures(groupStage)
+    : '<p class="empty">Nenhum jogo cadastrado. Use “+ Jogo” para adicionar.</p>';
+  $("finalMatches").innerHTML = fixtures(finalStage);
+
+  const done = groupStage.filter(m => m.status === "encerrado").length;
+  $("groupProgress").textContent = groupStage.length ? `${done} de ${groupStage.length} jogos encerrados` : "";
+}
+
+function renderFixture(m, isNext, showDay) {
+  const when = new Date(m.scheduled_at);
+  const time = when.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const day = when.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(".", "");
+  const decided = m.sets_a != null && m.sets_b != null;
+  const winner = decided ? (m.sets_a > m.sets_b ? "a" : "b") : null;
+  const teamClass = side => (winner ? (winner === side ? "won" : "lost") : "");
+  const where = m.stage === "grupos" ? groupLabel(m) : STAGE_LABELS[m.stage];
+  const status = STATUS_LABELS[m.status] || m.status;
+
   return `
-    <div class="player ${isNext ? "status-arrived" : ""}" data-match-id="${m.id}">
-      <div class="info">
-        <div class="name">
-          ${esc(m.team_a_code)} × ${esc(m.team_b_code)}
-          ${STAGE_LABELS[m.stage] ? `<span class="badge wait">${STAGE_LABELS[m.stage]}</span>` : ""}
-          ${m.walkover ? '<span class="badge">W.O.</span>' : ""}
-        </div>
-        <div class="muted">${when}${m.court ? " · " + esc(m.court) : ""} · ${m.status}</div>
+    <article class="fixture ${m.status}${isNext ? " next" : ""}" data-match-id="${m.id}">
+      <div class="fx-when">
+        <span class="fx-time">${time}</span>
+        ${showDay ? `<span class="fx-day">${esc(day)}</span>` : ""}
       </div>
-      <div class="actions">
-        <a href="/torneio/partidas/${m.id}"><button>Placar</button></a>
-        ${m.status !== "encerrado" ? `
-          <select data-action="walkover" data-match-id="${m.id}" title="Registrar W.O.">
-            <option value="">W.O.…</option>
-            <option value="b">${esc(m.team_a_code)} ausente (${esc(m.team_b_code)} vence)</option>
-            <option value="a">${esc(m.team_b_code)} ausente (${esc(m.team_a_code)} vence)</option>
-          </select>` : ""}
-        ${m.walkover ? `<button data-action="undo-walkover" data-match-id="${m.id}">Desfazer W.O.</button>` : ""}
+      <div class="fx-teams">
+        <span class="fx-team a ${teamClass("a")}">${esc(m.team_a_code)}</span>
+        <span class="fx-score">${decided ? `${m.sets_a}–${m.sets_b}` : "×"}</span>
+        <span class="fx-team b ${teamClass("b")}">${esc(m.team_b_code)}</span>
+      </div>
+      <div class="fx-meta">
+        <span class="chip">${esc(where)}</span>
+        <span class="chip ${m.status === "em_andamento" ? "live" : m.status === "encerrado" ? "done" : ""}">${status}</span>
+        ${isNext ? '<span class="chip next">A seguir</span>' : ""}
+        ${m.walkover ? '<span class="chip">W.O.</span>' : ""}
+        ${m.court ? `<span class="fx-court">${esc(m.court)}</span>` : ""}
+      </div>
+      <div class="fx-actions">
+        <a class="btn${m.status === "em_andamento" ? " primary" : ""}" href="/torneio/partidas/${m.id}">Placar</a>
         ${m.status === "agendado" ? `<button data-action="start" data-match-id="${m.id}">Iniciar</button>` : ""}
-        ${m.status === "em_andamento" ? `<button data-action="finish" data-match-id="${m.id}">Encerrar</button>` : ""}
-        <button class="danger" data-action="remove-match" data-match-id="${m.id}">Remover</button>
+        <details class="more">
+          <summary class="btn" aria-label="Mais ações do jogo">Mais</summary>
+          <div class="more-menu">
+            ${m.status !== "encerrado" ? `
+              <select data-action="walkover" data-match-id="${m.id}" title="Registrar W.O.">
+                <option value="">Registrar W.O.…</option>
+                <option value="b">${esc(m.team_a_code)} ausente (${esc(m.team_b_code)} vence)</option>
+                <option value="a">${esc(m.team_b_code)} ausente (${esc(m.team_a_code)} vence)</option>
+              </select>` : ""}
+            ${m.walkover ? `<button data-action="undo-walkover" data-match-id="${m.id}">Desfazer W.O.</button>` : ""}
+            ${m.status === "em_andamento" ? `<button data-action="finish" data-match-id="${m.id}">Encerrar sem placar</button>` : ""}
+            <button class="danger" data-action="remove-match" data-match-id="${m.id}">Remover jogo</button>
+          </div>
+        </details>
       </div>
-    </div>
+    </article>
   `;
 }
+
+function setMatchFormOpen(open) {
+  $("matchForm").classList.toggle("hidden", !open);
+  $("addMatchToggle").textContent = open ? "Fechar" : "+ Jogo";
+  $("addMatchToggle").setAttribute("aria-expanded", open);
+}
+
+$("addMatchToggle").addEventListener("click", () => {
+  setMatchFormOpen($("matchForm").classList.contains("hidden"));
+});
 
 $("matchForm").addEventListener("submit", async e => {
   e.preventDefault();
@@ -320,13 +389,14 @@ $("matchForm").addEventListener("submit", async e => {
     $("matchScheduledAt").value = "";
     $("matchCourt").value = "";
     $("matchStage").value = "grupos";
+    setMatchFormOpen(false);
     await loadMatches();
   } catch (err) {
     toast(err.message);
   }
 });
 
-$("matches").addEventListener("click", async e => {
+$("matchesSection").addEventListener("click", async e => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
   const { action, matchId } = btn.dataset;
@@ -343,6 +413,7 @@ $("matches").addEventListener("click", async e => {
         body: JSON.stringify({ status: "encerrado" }),
       });
     } else if (action === "remove-match") {
+      if (!confirm("Remover este jogo e o placar dele?")) return;
       await api(`/api/tournaments/${tournamentId}/matches/${matchId}`, { method: "DELETE" });
     } else if (action === "undo-walkover") {
       await api(`/api/tournaments/${tournamentId}/matches/${matchId}/walkover`, { method: "DELETE" });
@@ -354,7 +425,7 @@ $("matches").addEventListener("click", async e => {
   }
 });
 
-$("matches").addEventListener("change", async e => {
+$("matchesSection").addEventListener("change", async e => {
   const select = e.target.closest("select[data-action='walkover']");
   if (!select || !select.value) return;
   const present = select.value;
@@ -388,22 +459,27 @@ function updateKnockoutForms() {
   const bothGroupsDone = ["A", "B"].every(name => lastStandings.some(g => g.group === name && g.complete));
   const semis = [byStage("semifinal_1"), byStage("semifinal_2")];
 
-  $("generateSemisForm").classList.toggle("hidden", !(bothGroupsDone && !semis[0] && !semis[1]));
-  $("generateFinalsForm").classList.toggle("hidden", !(
-    semis.every(m => m && m.status === "encerrado") && !byStage("final") && !byStage("terceiro_lugar")
-  ));
+  const showSemis = bothGroupsDone && !semis[0] && !semis[1];
+  const showFinals = semis.every(m => m && m.status === "encerrado") && !byStage("final") && !byStage("terceiro_lugar");
+  $("generateSemisForm").classList.toggle("hidden", !showSemis);
+  $("generateFinalsForm").classList.toggle("hidden", !showFinals);
+  $("finalEmpty").classList.toggle("hidden", showSemis || showFinals || lastMatches.some(m => m.stage !== "grupos"));
 }
 
 async function loadPodium() {
   const podium = await api(`/api/tournaments/${tournamentId}/podium`);
   const places = [
-    ["🥇 Campeã", podium.champion],
-    ["🥈 Vice-campeã", podium.runner_up],
-    ["🥉 Terceira colocada", podium.third_place],
-  ].filter(([, team]) => team);
+    ["1º", "Campeã", podium.champion, "gold"],
+    ["2º", "Vice-campeã", podium.runner_up, "silver"],
+    ["3º", "Terceira colocada", podium.third_place, "bronze"],
+  ].filter(([, , team]) => team);
   $("podiumSection").classList.toggle("hidden", places.length === 0);
-  $("podiumBody").innerHTML = places.map(([label, team]) => `
-    <div class="player"><div class="info"><div class="name">${label}: ${esc(team)}</div></div></div>
+  $("podiumBody").innerHTML = places.map(([n, label, team, tone]) => `
+    <li class="place ${tone}">
+      <span class="place-n">${n}</span>
+      <span class="place-team">${esc(team)}</span>
+      <span class="place-label">${label}</span>
+    </li>
   `).join("");
 }
 
@@ -451,25 +527,49 @@ $("generateFinalsForm").addEventListener("submit", async e => {
   }
 });
 
+function fmtSigned(n) {
+  return n > 0 ? `+${n}` : String(n);
+}
+
 function renderStandings(groups) {
-  $("standingsBody").innerHTML = groups.map(g => `
-    <h3>${g.group ? `Grupo ${esc(g.group)}` : "Sem grupo"}
-      ${g.group && !g.complete ? '<span class="muted">(jogos pendentes)</span>' : ""}
-    </h3>
-    ${g.rows.map((row, i) => `
-      <div class="player">
-        <div class="info">
-          <div class="name">
-            ${i + 1}º ${esc(row.team)}
-            ${row.qualified ? '<span class="badge qualified">classificada</span>' : ""}
-            ${row.tied ? '<span class="badge wait">empate</span>' : ""}
-            <span class="badge">${row.tournament_points} pts</span>
-          </div>
-          <div class="muted">V: ${row.wins} · Saldo sets: ${row.sets_balance} · Saldo pontos: ${row.points_balance}</div>
+  $("standingsBody").innerHTML = groups.map(g => {
+    const n = g.rows.length;
+    const totalGames = n * (n - 1) / 2;
+    const playedGames = g.rows.reduce((sum, r) => sum + r.wins + r.losses, 0) / 2;
+    const progress = !g.group
+      ? "Defina o grupo na aba Equipes"
+      : g.complete ? "Grupo encerrado" : `${playedGames} de ${totalGames} jogos`;
+
+    return `
+      <section class="panel group-table">
+        <div class="stage-head">
+          <h2>${g.group ? `Grupo ${esc(g.group)}` : "Sem grupo"}</h2>
+          <span class="muted">${progress}</span>
         </div>
-      </div>
-    `).join("")}
-  `).join("");
+        <div class="st-row st-head">
+          <span></span><span>Equipe</span>
+          <span title="Jogos">J</span><span title="Vitórias">V</span>
+          <span title="Saldo de sets">SS</span><span title="Saldo de pontos">SP</span>
+          <span title="Pontos">Pts</span>
+        </div>
+        ${g.rows.map(row => `
+          <div class="st-row${row.qualified ? " qualified" : ""}">
+            <span class="st-pos">${playedGames > 0 ? row.rank : "–"}</span>
+            <span class="st-team">
+              ${esc(row.team)}
+              ${row.qualified ? '<small class="note ok">Classificada</small>' : ""}
+              ${row.tied ? '<small class="note tie">Empate</small>' : ""}
+            </span>
+            <span>${row.wins + row.losses}</span>
+            <span>${row.wins}</span>
+            <span>${fmtSigned(row.sets_balance)}</span>
+            <span>${fmtSigned(row.points_balance)}</span>
+            <strong>${row.tournament_points}</strong>
+          </div>
+        `).join("")}
+      </section>
+    `;
+  }).join("");
 }
 
 setInterval(() => {
