@@ -186,3 +186,74 @@ def test_update_missing_team_player_raises_404():
 
     with pytest.raises(HTTPException):
         update_team_player(team.id, player.id, TeamPlayerUpdate(role="reserva"), db)
+
+
+def make_team_with_players(db, n):
+    team, _ = make_team_with_player(db)
+    players = []
+    for i in range(n):
+        player = Player(name=f"Jogador {i}", score=70, gender="F")
+        db.add(player)
+        players.append(player)
+    db.commit()
+    return team, players
+
+
+def test_a_team_cannot_have_more_than_seven_players():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team, players = make_team_with_players(db, 8)
+    for player in players[:7]:
+        add_team_player(team.id, TeamPlayerAdd(player_id=player.id), db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        add_team_player(team.id, TeamPlayerAdd(player_id=players[7].id), db)
+    assert exc_info.value.status_code == 409
+
+
+def test_a_team_with_seven_can_free_a_spot_by_removing_someone():
+    db = make_db()
+    team, players = make_team_with_players(db, 8)
+    for player in players[:7]:
+        add_team_player(team.id, TeamPlayerAdd(player_id=player.id), db)
+
+    remove_team_player(team.id, players[0].id, db)
+    add_team_player(team.id, TeamPlayerAdd(player_id=players[7].id), db)  # no error
+
+
+def test_a_team_cannot_have_two_reserves():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team, players = make_team_with_players(db, 2)
+    add_team_player(team.id, TeamPlayerAdd(player_id=players[0].id, role="reserva"), db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        add_team_player(team.id, TeamPlayerAdd(player_id=players[1].id, role="reserva"), db)
+    assert exc_info.value.status_code == 409
+
+
+def test_cannot_turn_a_second_player_into_a_reserve():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team, players = make_team_with_players(db, 2)
+    add_team_player(team.id, TeamPlayerAdd(player_id=players[0].id, role="reserva"), db)
+    add_team_player(team.id, TeamPlayerAdd(player_id=players[1].id), db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        update_team_player(team.id, players[1].id, TeamPlayerUpdate(role="reserva"), db)
+    assert exc_info.value.status_code == 409
+
+
+def test_the_current_reserve_can_be_set_to_reserve_again():
+    db = make_db()
+    team, players = make_team_with_players(db, 1)
+    add_team_player(team.id, TeamPlayerAdd(player_id=players[0].id, role="reserva"), db)
+
+    update_team_player(team.id, players[0].id, TeamPlayerUpdate(role="reserva"), db)  # no error
+

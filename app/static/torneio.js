@@ -74,7 +74,7 @@ function renderTeam(team) {
   const titulares = team.players.filter(p => p.role === "titular").length;
   return `
     <div class="panel" data-team-id="${team.id}">
-      <h3>Time ${esc(team.code)} <span class="muted">(${team.players.length} jogador(es), ${titulares} titulares)</span></h3>
+      <h3>Time ${esc(team.code)} <span class="muted">(${team.players.length}/7 atletas, ${titulares} titulares)</span></h3>
       <label class="muted">Grupo
         <select class="group-select" data-team-id="${team.id}">
           <option value="">—</option>

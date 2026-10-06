@@ -10,6 +10,18 @@ router = APIRouter()
 
 GROUPS = ("A", "B")
 
+# Regulation: up to 7 athletes per team, the 7th being the single reserve.
+MAX_TEAM_PLAYERS = 7
+MAX_RESERVES = 1
+
+
+def check_reserve_slot_free(db, team_id, ignore_player_id=None):
+    query = select(TeamPlayer).where(TeamPlayer.team_id == team_id, TeamPlayer.role == "reserva")
+    if ignore_player_id is not None:
+        query = query.where(TeamPlayer.player_id != ignore_player_id)
+    if len(db.execute(query).scalars().all()) >= MAX_RESERVES:
+        raise HTTPException(409, "A equipe já tem um reserva")
+
 
 @router.post("/api/tournaments")
 def create_tournament(data: TournamentCreate, db: DBSession = Depends(get_db)):
@@ -135,6 +147,12 @@ def add_team_player(team_id: int, data: TeamPlayerAdd, db: DBSession = Depends(g
     if in_other_team:
         raise HTTPException(409, "Jogador já está em outro time deste torneio")
 
+    roster_size = len(db.execute(select(TeamPlayer).where(TeamPlayer.team_id == team_id)).scalars().all())
+    if roster_size >= MAX_TEAM_PLAYERS:
+        raise HTTPException(409, f"A equipe já tem {MAX_TEAM_PLAYERS} atletas")
+    if data.role == "reserva":
+        check_reserve_slot_free(db, team_id)
+
     tp = TeamPlayer(team_id=team_id, player_id=data.player_id, role=data.role)
     db.add(tp)
     db.commit()
@@ -159,6 +177,8 @@ def update_team_player(team_id: int, player_id: int, data: TeamPlayerUpdate, db:
     tp = get_team_player(db, team_id, player_id)
 
     if data.role is not None:
+        if data.role == "reserva":
+            check_reserve_slot_free(db, team_id, ignore_player_id=player_id)
         tp.role = data.role
 
     if data.is_captain is True:
