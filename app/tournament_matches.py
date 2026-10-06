@@ -1,4 +1,3 @@
-from datetime import datetime, time
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -209,7 +208,6 @@ def set_walkover(tournament_id: int, match_id: int, data: WalkoverRequest, db: D
     m.walkover = True
     db.commit()
     db.refresh(m)
-    advance_knockout(db, tournament_id)
     return m
 
 
@@ -310,14 +308,11 @@ def close_set(tournament_id: int, match_id: int, db: DBSession = Depends(get_db)
     open_set.closed = True
     db.flush()
 
-    decided = decided_result(db, match_id) is not None
-    if decided:
+    if decided_result(db, match_id) is not None:
         m.status = "encerrado"
 
     db.commit()
     db.refresh(open_set)
-    if decided:
-        advance_knockout(db, tournament_id)
     return serialize_set(open_set)
 
 
@@ -400,42 +395,8 @@ def winner_and_loser(db, m):
     return m.team_b_id, m.team_a_id
 
 
-# Regulation schedule for the last day: semifinals 09h/10h, 3rd place 11h, final 12h.
-KNOCKOUT_TIMES = {
-    "semifinal_1": time(9, 0),
-    "semifinal_2": time(10, 0),
-    "terceiro_lugar": time(11, 0),
-    "final": time(12, 0),
-}
-
-
-def advance_knockout(db, tournament_id):
-    """Create the next knockout games as soon as the phase before is fully
-    decided: semifinals after the groups, 3rd place + final after the
-    semifinals. Quietly does nothing when it can't - groups unfinished, a tie
-    for a qualifying spot (the organization draws and registers by hand),
-    games already created."""
-    day = get_tournament(db, tournament_id).end_date
-
-    def at(stage):
-        return datetime.combine(day, KNOCKOUT_TIMES[stage])
-
-    for create in (
-        lambda: create_semifinals(db, tournament_id, at("semifinal_1"), at("semifinal_2")),
-        lambda: create_finals(db, tournament_id, at("terceiro_lugar"), at("final")),
-    ):
-        try:
-            create()
-        except HTTPException:
-            pass
-
-
 @router.post("/api/tournaments/{tournament_id}/generate-semifinals")
 def generate_semifinals(tournament_id: int, data: GenerateSemifinalsRequest, db: DBSession = Depends(get_db)):
-    return create_semifinals(db, tournament_id, data.semifinal_1_at, data.semifinal_2_at, data.court)
-
-
-def create_semifinals(db, tournament_id, semifinal_1_at, semifinal_2_at, court=None):
     get_tournament(db, tournament_id)
     if stage_match(db, tournament_id, "semifinal_1") or stage_match(db, tournament_id, "semifinal_2"):
         raise HTTPException(409, "As semifinais já foram cadastradas")
@@ -463,11 +424,11 @@ def create_semifinals(db, tournament_id, semifinal_1_at, semifinal_2_at, court=N
     semis = [
         TournamentMatch(
             tournament_id=tournament_id, team_a_id=first_a, team_b_id=second_b,
-            scheduled_at=semifinal_1_at, court=court, stage="semifinal_1",
+            scheduled_at=data.semifinal_1_at, court=data.court, stage="semifinal_1",
         ),
         TournamentMatch(
             tournament_id=tournament_id, team_a_id=first_b, team_b_id=second_a,
-            scheduled_at=semifinal_2_at, court=court, stage="semifinal_2",
+            scheduled_at=data.semifinal_2_at, court=data.court, stage="semifinal_2",
         ),
     ]
     db.add_all(semis)
@@ -479,10 +440,6 @@ def create_semifinals(db, tournament_id, semifinal_1_at, semifinal_2_at, court=N
 
 @router.post("/api/tournaments/{tournament_id}/generate-finals")
 def generate_finals(tournament_id: int, data: GenerateFinalsRequest, db: DBSession = Depends(get_db)):
-    return create_finals(db, tournament_id, data.third_place_at, data.final_at, data.court)
-
-
-def create_finals(db, tournament_id, third_place_at, final_at, court=None):
     get_tournament(db, tournament_id)
     if stage_match(db, tournament_id, "final") or stage_match(db, tournament_id, "terceiro_lugar"):
         raise HTTPException(409, "A final e o 3º lugar já foram cadastrados")
@@ -498,11 +455,11 @@ def create_finals(db, tournament_id, third_place_at, final_at, court=None):
     (win_1, lose_1), (win_2, lose_2) = outcomes
     third = TournamentMatch(
         tournament_id=tournament_id, team_a_id=lose_1, team_b_id=lose_2,
-        scheduled_at=third_place_at, court=court, stage="terceiro_lugar",
+        scheduled_at=data.third_place_at, court=data.court, stage="terceiro_lugar",
     )
     final = TournamentMatch(
         tournament_id=tournament_id, team_a_id=win_1, team_b_id=win_2,
-        scheduled_at=final_at, court=court, stage="final", is_final=True,
+        scheduled_at=data.final_at, court=data.court, stage="final", is_final=True,
     )
     db.add_all([third, final])
     db.commit()

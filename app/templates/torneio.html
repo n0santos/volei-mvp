@@ -90,8 +90,20 @@
             <div class="muted">Semifinais, 3º lugar e final</div>
           </div>
         </div>
+        <form id="generateSemisForm" class="action-panel hidden">
+          <p id="semisHint">Os dois grupos terminaram. Confirme os horários das semifinais.</p>
+          <label>Semifinal 1 <input id="semi1At" type="time" value="09:00" required></label>
+          <label>Semifinal 2 <input id="semi2At" type="time" value="10:00" required></label>
+          <button class="primary">Gerar semifinais</button>
+        </form>
+        <form id="generateFinalsForm" class="action-panel hidden">
+          <p id="finalsHint">As semifinais terminaram. Confirme os horários do 3º lugar e da final.</p>
+          <label>3º lugar <input id="thirdAt" type="time" value="11:00" required></label>
+          <label>Final <input id="finalAt" type="time" value="12:00" required></label>
+          <button class="primary">Gerar 3º lugar e final</button>
+        </form>
         <div id="finalMatches" class="fixtures"></div>
-        <p id="finalEmpty" class="empty"></p>
+        <p id="finalEmpty" class="empty">A fase final começa quando os dois grupos terminarem.</p>
       </section>
     </div>
 

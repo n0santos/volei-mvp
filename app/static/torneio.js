@@ -41,8 +41,8 @@ function fmtDate(s) {
 
 const TABS = ["jogos", "classificacao", "equipes"];
 
-// The tournament runs on known days, so a manual game is placed by day + time
-// instead of a free date field.
+// The tournament runs on known days (groups on the first, the knockout on the
+// last), so games are placed by day + time instead of a free date field.
 let tournamentDays = [];
 
 function daysBetween(start, end) {
@@ -62,6 +62,7 @@ function fillDayOptions() {
   $("matchDay").innerHTML = tournamentDays.map(d => `<option value="${d}">${dayLabel(d)}</option>`).join("");
 }
 
+const lastDay = () => tournamentDays[tournamentDays.length - 1];
 
 // The tab lives in the URL hash (/torneio#equipes), so a reload or a shared
 // link opens the same one; the panes themselves are hidden by CSS.
@@ -341,7 +342,7 @@ async function loadMatches() {
   const matches = await api(`/api/tournaments/${tournamentId}/matches`);
   lastMatches = matches;
   renderMatches(matches);
-  updateFinalHint();
+  updateKnockoutForms();
 }
 
 function groupLabel(m) {
@@ -420,7 +421,6 @@ function renderFixture(m, isNext, showDay) {
                 <option value="b">${esc(m.team_a_code)} ausente (${esc(m.team_b_code)} vence)</option>
                 <option value="a">${esc(m.team_b_code)} ausente (${esc(m.team_a_code)} vence)</option>
               </select>` : ""}
-            ${m.status !== "encerrado" ? `<button data-action="reschedule" data-match-id="${m.id}" data-day="${m.scheduled_at.slice(0, 10)}" data-time="${time}">Alterar horário</button>` : ""}
             ${m.walkover ? `<button data-action="undo-walkover" data-match-id="${m.id}">Desfazer W.O.</button>` : ""}
             ${m.status === "em_andamento" ? `<button data-action="finish" data-match-id="${m.id}">Encerrar sem placar</button>` : ""}
             <button class="danger" data-action="remove-match" data-match-id="${m.id}">Remover jogo</button>
@@ -481,18 +481,6 @@ $("matchesSection").addEventListener("click", async e => {
     } else if (action === "remove-match") {
       if (!confirm("Remover este jogo e o placar dele?")) return;
       await api(`/api/tournaments/${tournamentId}/matches/${matchId}`, { method: "DELETE" });
-    } else if (action === "reschedule") {
-      const input = prompt("Novo horário (HH:MM)", btn.dataset.time);
-      if (input === null) return;
-      const hhmm = input.trim();
-      if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(hhmm)) {
-        toast("Use o formato HH:MM, por exemplo 09:30");
-        return;
-      }
-      await api(`/api/tournaments/${tournamentId}/matches/${matchId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ scheduled_at: `${btn.dataset.day}T${hhmm.padStart(5, "0")}` }),
-      });
     } else if (action === "undo-walkover") {
       await api(`/api/tournaments/${tournamentId}/matches/${matchId}/walkover`, { method: "DELETE" });
     }
@@ -529,22 +517,22 @@ $("matchesSection").addEventListener("change", async e => {
 async function loadStandings() {
   lastStandings = await api(`/api/tournaments/${tournamentId}/standings`);
   renderStandings(lastStandings);
-  updateFinalHint();
+  updateKnockoutForms();
 }
 
-// The knockout games are created by the server when the phase before ends;
-// this only explains what the empty "Fase final" is waiting for.
-function updateFinalHint() {
-  const started = lastMatches.some(m => m.stage !== "grupos");
-  $("finalEmpty").classList.toggle("hidden", started);
-  if (started) return;
+function updateKnockoutForms() {
+  const byStage = stage => lastMatches.find(m => m.stage === stage);
+  const bothGroupsDone = ["A", "B"].every(name => lastStandings.some(g => g.group === name && g.complete));
+  const semis = [byStage("semifinal_1"), byStage("semifinal_2")];
 
-  const tied = lastStandings
-    .filter(g => g.group && g.complete && g.rows.filter(r => r.qualified).length < 2)
-    .map(g => g.group);
-  $("finalEmpty").textContent = tied.length
-    ? `Empate na classificação do grupo ${tied.join(" e ")}. Faça o sorteio e cadastre as semifinais em “+ Jogo”.`
-    : "As semifinais são criadas automaticamente quando os dois grupos terminarem.";
+  const showSemis = bothGroupsDone && !semis[0] && !semis[1];
+  const showFinals = semis.every(m => m && m.status === "encerrado") && !byStage("final") && !byStage("terceiro_lugar");
+  const when = tournamentDays.length ? ` de ${dayLabel(lastDay())}` : "";
+  $("semisHint").textContent = `Os dois grupos terminaram. Confirme os horários das semifinais${when}.`;
+  $("finalsHint").textContent = `As semifinais terminaram. Confirme os horários do 3º lugar e da final${when}.`;
+  $("generateSemisForm").classList.toggle("hidden", !showSemis);
+  $("generateFinalsForm").classList.toggle("hidden", !showFinals);
+  $("finalEmpty").classList.toggle("hidden", showSemis || showFinals || lastMatches.some(m => m.stage !== "grupos"));
 }
 
 async function loadPodium() {
@@ -563,6 +551,48 @@ async function loadPodium() {
     </li>
   `).join("");
 }
+
+$("generateSemisForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const btn = e.target.querySelector("button");
+  btn.disabled = true;
+  try {
+    await api(`/api/tournaments/${tournamentId}/generate-semifinals`, {
+      method: "POST",
+      body: JSON.stringify({
+        semifinal_1_at: `${lastDay()}T${$("semi1At").value}`,
+        semifinal_2_at: `${lastDay()}T${$("semi2At").value}`,
+      }),
+    });
+    e.target.reset();
+    await loadMatches();
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("generateFinalsForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const btn = e.target.querySelector("button");
+  btn.disabled = true;
+  try {
+    await api(`/api/tournaments/${tournamentId}/generate-finals`, {
+      method: "POST",
+      body: JSON.stringify({
+        third_place_at: `${lastDay()}T${$("thirdAt").value}`,
+        final_at: `${lastDay()}T${$("finalAt").value}`,
+      }),
+    });
+    e.target.reset();
+    await loadMatches();
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 function fmtSigned(n) {
   return n > 0 ? `+${n}` : String(n);
