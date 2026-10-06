@@ -38,14 +38,22 @@
       </form>
     </section>
 
-    <section id="tournamentPanel" class="panel tab-pane hidden" data-pane="equipes">
-      <h2>Times</h2>
-      <form id="teamForm" class="inline">
-        <input id="teamCode" placeholder="Código do time (ex.: A)" required>
-        <button class="primary">+ Time</button>
-      </form>
+    <div id="tournamentPanel" class="tab-pane hidden" data-pane="equipes">
+      <section class="panel">
+        <div class="stage-head">
+          <div>
+            <h2>Equipes</h2>
+            <div id="teamsSummary" class="muted"></div>
+          </div>
+          <button type="button" id="addTeamToggle" class="primary" aria-expanded="false" aria-controls="teamForm">+ Equipe</button>
+        </div>
+        <form id="teamForm" class="match-form hidden">
+          <label>Nome da equipe <input id="teamCode" placeholder="Ex.: JASVEM" required></label>
+          <button class="primary">Adicionar equipe</button>
+        </form>
+      </section>
       <div id="teams"></div>
-    </section>
+    </div>
 
     <div id="matchesSection" class="tab-pane hidden" data-pane="jogos">
       <section class="panel">

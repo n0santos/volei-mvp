@@ -391,6 +391,58 @@ body.torneio {
   box-shadow: 0 8px 24px rgba(22, 35, 59, .16);
 }
 
+/* Equipes */
+.torneio .btn.sm { padding: 6px 11px; font-size: 14px; }
+.torneio .team-group { margin: 22px 0 0; }
+.torneio .group-title {
+  margin: 0 0 10px 2px;
+  font-family: var(--font-display);
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+.torneio .group-title .muted { margin-left: 8px; font-family: var(--font-body); font-weight: 400; }
+.torneio .team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.torneio .team-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+.torneio .tc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.torneio .tc-name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.torneio .tc-count { font-size: 13px; color: var(--mute); }
+.torneio .tc-count.full { color: var(--palm); font-weight: 600; }
+.torneio .tc-warn { margin-top: 8px; font-size: 13px; color: var(--ball); }
+.torneio .tp-list { list-style: none; margin: 10px 0 12px; padding: 0; }
+.torneio .tp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border);
+}
+.torneio .tp:first-child { border-top: 0; }
+.torneio .tp-name { flex: 1; min-width: 0; font-weight: 500; }
+/* per-athlete menus are rare: keep them quiet until touched */
+.torneio .tp .btn.sm { border-color: transparent; background: transparent; color: var(--mute); }
+.torneio .tp .btn.sm:hover, .torneio .tp details[open] > .btn.sm { border-color: var(--border); background: white; color: var(--ink); }
+.torneio .tp-empty { padding: 10px 0; color: var(--mute); font-size: 14px; }
+.torneio .chip.captain { background: var(--sun-tint); color: #8a5d00; font-weight: 600; }
+.torneio .team-card .add-player-form { margin: 0; flex-wrap: nowrap; }
+.torneio .team-card .add-player-form input { flex: 1 1 0; }
+.torneio .team-card .add-player-form button { flex: 0 0 auto; }
+
 /* Classificação */
 .torneio .group-tables {
   display: grid;

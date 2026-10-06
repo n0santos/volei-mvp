@@ -89,58 +89,103 @@ async function loadActiveTournament() {
 async function loadState() {
   const state = await api(`/api/tournaments/${tournamentId}`);
   lastTeams = state.teams;
-  $("teams").innerHTML = state.teams.map(renderTeam).join("");
+  renderTeams(state.teams);
 
   populateTeamSelect($("matchTeamA"), state.teams);
   populateTeamSelect($("matchTeamB"), state.teams);
 }
 
+function renderTeams(teams) {
+  const athletes = teams.reduce((sum, t) => sum + t.players.length, 0);
+  $("teamsSummary").textContent = `${teams.length} equipes, ${athletes} atletas`;
+
+  // Group A, group B, then teams still without a group
+  const groups = [...new Set(teams.map(t => t.group_name))].sort((a, b) => (a === null) - (b === null) || String(a).localeCompare(b));
+  $("teams").innerHTML = groups.map(g => {
+    const inGroup = teams.filter(t => t.group_name === g);
+    return `
+      <section class="team-group">
+        <h3 class="group-title">${g ? `Grupo ${esc(g)}` : "Sem grupo"}
+          <span class="muted">${inGroup.length} ${inGroup.length === 1 ? "equipe" : "equipes"}</span>
+        </h3>
+        <div class="team-grid">${inGroup.map(renderTeam).join("")}</div>
+      </section>
+    `;
+  }).join("");
+}
+
 function renderTeam(team) {
-  const titulares = team.players.filter(p => p.role === "titular").length;
+  // Captain first, then starters, then reserves
+  const rank = p => (p.is_captain ? 0 : p.role === "titular" ? 1 : 2);
+  const players = [...team.players].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  const full = team.players.length >= team.max_players;
+  const hasCaptain = team.players.some(p => p.is_captain);
+
   return `
-    <div class="panel" data-team-id="${team.id}">
-      <h3>Time ${esc(team.code)} <span class="muted">(${team.players.length}/${team.max_players} atletas, ${titulares} titulares)</span></h3>
-      <label class="muted">Grupo
-        <select class="group-select" data-team-id="${team.id}">
-          <option value="">—</option>
-          ${["A", "B"].map(g => `<option value="${g}"${team.group_name === g ? " selected" : ""}>${g}</option>`).join("")}
-        </select>
-      </label>
-      <label class="muted">Limite de atletas
-        <select class="max-players-select" data-team-id="${team.id}">
-          ${[7, 8].map(n => `<option value="${n}"${team.max_players === n ? " selected" : ""}>${n}</option>`).join("")}
-        </select>
-      </label>
-      <div class="roster-list">
-        ${team.players.map(p => renderPlayer(team.id, p)).join("")}
+    <article class="team-card" data-team-id="${team.id}">
+      <div class="tc-head">
+        <div>
+          <h4 class="tc-name">${esc(team.code)}</h4>
+          <div class="tc-count${full ? " full" : ""}">${team.players.length} de ${team.max_players} atletas</div>
+        </div>
+        <details class="more">
+          <summary class="btn sm" aria-label="Ajustes da equipe">Ajustes</summary>
+          <div class="more-menu">
+            <label class="tournament-label">Grupo
+              <select class="group-select" data-team-id="${team.id}">
+                <option value="">Sem grupo</option>
+                ${["A", "B"].map(g => `<option value="${g}"${team.group_name === g ? " selected" : ""}>Grupo ${g}</option>`).join("")}
+              </select>
+            </label>
+            <label class="tournament-label">Limite de atletas
+              <select class="max-players-select" data-team-id="${team.id}">
+                ${[7, 8].map(n => `<option value="${n}"${team.max_players === n ? " selected" : ""}>${n}</option>`).join("")}
+              </select>
+            </label>
+          </div>
+        </details>
       </div>
+      ${players.length && !hasCaptain ? '<div class="tc-warn">Sem capitão definido</div>' : ""}
+      <ul class="tp-list">
+        ${players.map(p => renderPlayer(team.id, p)).join("") || '<li class="tp-empty">Nenhum atleta ainda.</li>'}
+      </ul>
       <form class="inline add-player-form" data-team-id="${team.id}">
-        <input placeholder="Nome do jogador" class="player-search" required>
+        <input placeholder="Nome do atleta" class="player-search" required>
         <button class="primary">Adicionar</button>
       </form>
-    </div>
+    </article>
   `;
 }
 
 function renderPlayer(teamId, p) {
+  const captainLabel = p.gender === "F" ? "Capitã" : "Capitão";
+  const attrs = `data-team-id="${teamId}" data-player-id="${p.id}"`;
   return `
-    <div class="player">
-      <div class="info">
-        <div class="name">${esc(p.name)} ${p.is_captain ? '<span class="badge wait">Capitão</span>' : ""}</div>
-        <div class="muted">${p.role === "titular" ? "Titular" : "Reserva"}</div>
-      </div>
-      <div class="actions">
-        <button data-action="toggle-role" data-team-id="${teamId}" data-player-id="${p.id}">
-          ${p.role === "titular" ? "Reserva" : "Titular"}
-        </button>
-        <button data-action="toggle-captain" data-team-id="${teamId}" data-player-id="${p.id}">
-          ${p.is_captain ? "Remover capitão" : "Capitão"}
-        </button>
-        <button class="danger" data-action="remove" data-team-id="${teamId}" data-player-id="${p.id}">Remover</button>
-      </div>
-    </div>
+    <li class="tp">
+      <span class="tp-name">${esc(p.name)}</span>
+      ${p.is_captain ? `<span class="chip captain">${captainLabel}</span>` : ""}
+      ${p.role === "reserva" ? '<span class="chip">Reserva</span>' : ""}
+      <details class="more">
+        <summary class="btn sm" aria-label="Ações de ${esc(p.name)}">Mais</summary>
+        <div class="more-menu">
+          <button data-action="set-captain" data-captain="${p.is_captain ? "0" : "1"}" ${attrs}>${p.is_captain ? `Remover ${captainLabel.toLowerCase()}` : `Tornar ${captainLabel.toLowerCase()}`}</button>
+          <button data-action="set-role" data-role="${p.role === "titular" ? "reserva" : "titular"}" ${attrs}>${p.role === "titular" ? "Marcar como reserva" : "Marcar como titular"}</button>
+          <button class="danger" data-action="remove" data-name="${esc(p.name)}" ${attrs}>Remover da equipe</button>
+        </div>
+      </details>
+    </li>
   `;
 }
+
+function setTeamFormOpen(open) {
+  $("teamForm").classList.toggle("hidden", !open);
+  $("addTeamToggle").textContent = open ? "Fechar" : "+ Equipe";
+  $("addTeamToggle").setAttribute("aria-expanded", open);
+}
+
+$("addTeamToggle").addEventListener("click", () => {
+  setTeamFormOpen($("teamForm").classList.contains("hidden"));
+});
 
 $("tournamentForm").addEventListener("submit", async e => {
   e.preventDefault();
@@ -167,6 +212,7 @@ $("teamForm").addEventListener("submit", async e => {
       body: JSON.stringify({ code: $("teamCode").value }),
     });
     $("teamCode").value = "";
+    setTeamFormOpen(false);
     await loadState();
   } catch (err) {
     toast(err.message);
@@ -225,22 +271,16 @@ $("teams").addEventListener("click", async e => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
   const { action, teamId, playerId } = btn.dataset;
+  const url = `/api/teams/${teamId}/players/${playerId}`;
 
   try {
     if (action === "remove") {
-      await api(`/api/teams/${teamId}/players/${playerId}`, { method: "DELETE" });
-    } else if (action === "toggle-role") {
-      const newRole = btn.textContent.trim() === "Reserva" ? "reserva" : "titular";
-      await api(`/api/teams/${teamId}/players/${playerId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ role: newRole }),
-      });
-    } else if (action === "toggle-captain") {
-      const makeCaptain = btn.textContent.trim() === "Capitão";
-      await api(`/api/teams/${teamId}/players/${playerId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ is_captain: makeCaptain }),
-      });
+      if (!confirm(`Remover ${btn.dataset.name} da equipe?`)) return;
+      await api(url, { method: "DELETE" });
+    } else if (action === "set-role") {
+      await api(url, { method: "PATCH", body: JSON.stringify({ role: btn.dataset.role }) });
+    } else if (action === "set-captain") {
+      await api(url, { method: "PATCH", body: JSON.stringify({ is_captain: btn.dataset.captain === "1" }) });
     }
     await loadState();
   } catch (err) {
