@@ -7,13 +7,11 @@ from sqlalchemy.orm import sessionmaker
 
 from app import database
 from app.database import Base
-from app.models import Tournament, Team, TournamentSetResult
-from app.schemas import (
-    TournamentMatchCreate, SetPointRequest, WalkoverRequest, GenerateSemifinalsRequest,
-)
+from app.models import Tournament, Team, TournamentMatch, TournamentSetResult
+from app.schemas import TournamentMatchCreate, SetPointRequest, WalkoverRequest
 from app.tournament_matches import (
     create_match, get_scoreboard, add_point, get_standings,
-    set_walkover, undo_walkover, generate_semifinals,
+    set_walkover, undo_walkover,
 )
 
 WHEN = datetime(2026, 11, 28, 13, 0)
@@ -156,14 +154,11 @@ def test_walkovers_feed_the_semifinals_and_then_cannot_be_undone():
     t, teams = make_teams(db)
     play_group_by_walkover(db, t, teams, "A")
     play_group_by_walkover(db, t, teams, "B")
-    when = GenerateSemifinalsRequest(semifinal_1_at=WHEN, semifinal_2_at=WHEN)
 
-    sf1, sf2 = generate_semifinals(t.id, when, db)
-
+    # the last W.O. finished the groups, so the semifinals were created on their own
+    sf1 = db.query(TournamentMatch).filter_by(stage="semifinal_1").one()
     assert (sf1.team_a_id, sf1.team_b_id) == (teams["A1"].id, teams["B2"].id)
-    group_match = next(
-        m for m in db.query(type(sf1)).filter_by(stage="grupos") if m.walkover
-    )
+    group_match = next(m for m in db.query(TournamentMatch).filter_by(stage="grupos") if m.walkover)
     with pytest.raises(HTTPException) as exc_info:
         undo_walkover(t.id, group_match.id, db)
     assert exc_info.value.status_code == 409
