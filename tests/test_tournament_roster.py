@@ -6,10 +6,10 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.tournament import (
     create_tournament, active_tournament, create_team, tournament_state,
-    add_team_player, update_team_player, remove_team_player,
+    add_team_player, update_team_player, remove_team_player, update_team,
 )
 from app.schemas import (
-    TournamentCreate, TeamCreate, TeamPlayerAdd, TeamPlayerUpdate,
+    TournamentCreate, TeamCreate, TeamPlayerAdd, TeamPlayerUpdate, TeamUpdate,
 )
 from app.models import Player
 
@@ -256,4 +256,99 @@ def test_the_current_reserve_can_be_set_to_reserve_again():
     add_team_player(team.id, TeamPlayerAdd(player_id=players[0].id, role="reserva"), db)
 
     update_team_player(team.id, players[0].id, TeamPlayerUpdate(role="reserva"), db)  # no error
+
+
+def test_a_team_starts_with_the_regulation_limit_of_seven():
+    db = make_db()
+    team, _ = make_team_with_player(db)
+    assert team.max_players == 7
+    assert tournament_state(team.tournament_id, db)["teams"][0]["max_players"] == 7
+
+
+def test_a_team_allowed_eight_takes_eight_but_not_nine():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team, players = make_team_with_players(db, 9)
+    update_team(team.id, TeamUpdate(max_players=8), db)
+    for player in players[:8]:
+        add_team_player(team.id, TeamPlayerAdd(player_id=player.id), db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        add_team_player(team.id, TeamPlayerAdd(player_id=players[8].id), db)
+    assert exc_info.value.status_code == 409
+
+
+def test_raising_one_teams_limit_does_not_raise_the_others():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team, players = make_team_with_players(db, 8)
+    other = create_team(team.tournament_id, TeamCreate(code="B"), db)
+    update_team(team.id, TeamUpdate(max_players=8), db)
+    for player in players[:7]:
+        add_team_player(other.id, TeamPlayerAdd(player_id=player.id), db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        add_team_player(other.id, TeamPlayerAdd(player_id=players[7].id), db)
+    assert exc_info.value.status_code == 409
+
+
+def test_two_reserves_need_a_limit_of_eight():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team, players = make_team_with_players(db, 2)
+    add_team_player(team.id, TeamPlayerAdd(player_id=players[0].id, role="reserva"), db)
+    with pytest.raises(HTTPException):
+        add_team_player(team.id, TeamPlayerAdd(player_id=players[1].id, role="reserva"), db)
+
+    update_team(team.id, TeamUpdate(max_players=8), db)
+    add_team_player(team.id, TeamPlayerAdd(player_id=players[1].id, role="reserva"), db)  # no error
+
+
+def test_team_limit_only_accepts_seven_or_eight():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team, _ = make_team_with_player(db)
+    for bad in (6, 9, 100):
+        with pytest.raises(HTTPException) as exc_info:
+            update_team(team.id, TeamUpdate(max_players=bad), db)
+        assert exc_info.value.status_code == 400
+
+
+def test_cannot_lower_the_limit_below_the_current_roster():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team, players = make_team_with_players(db, 8)
+    update_team(team.id, TeamUpdate(max_players=8), db)
+    for player in players[:8]:
+        add_team_player(team.id, TeamPlayerAdd(player_id=player.id), db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        update_team(team.id, TeamUpdate(max_players=7), db)
+    assert exc_info.value.status_code == 409
+    assert team.max_players == 8
+
+
+def test_cannot_lower_the_limit_while_the_team_has_two_reserves():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    team, players = make_team_with_players(db, 2)
+    update_team(team.id, TeamUpdate(max_players=8), db)
+    for player in players:
+        add_team_player(team.id, TeamPlayerAdd(player_id=player.id, role="reserva"), db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        update_team(team.id, TeamUpdate(max_players=7), db)
+    assert exc_info.value.status_code == 409
 

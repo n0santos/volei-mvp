@@ -22,6 +22,7 @@ class Base(DeclarativeBase):
 # after launch has to be ALTERed into existing DBs here: (table, column) -> type.
 MISSING_COLUMNS = {
     ("teams", "group_name"): "VARCHAR(1)",
+    ("teams", "max_players"): "INTEGER NOT NULL DEFAULT 7",
     ("tournament_matches", "stage"): "VARCHAR(20) NOT NULL DEFAULT 'grupos'",
     ("tournament_matches", "walkover"): "BOOLEAN NOT NULL DEFAULT 0",
 }

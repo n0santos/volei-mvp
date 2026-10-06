@@ -39,6 +39,7 @@ class TeamCreate(BaseModel):
 
 class TeamUpdate(BaseModel):
     group_name: str | None = None
+    max_players: int | None = None
 
 
 class TeamPlayerAdd(BaseModel):

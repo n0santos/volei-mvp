@@ -74,11 +74,16 @@ function renderTeam(team) {
   const titulares = team.players.filter(p => p.role === "titular").length;
   return `
     <div class="panel" data-team-id="${team.id}">
-      <h3>Time ${esc(team.code)} <span class="muted">(${team.players.length}/7 atletas, ${titulares} titulares)</span></h3>
+      <h3>Time ${esc(team.code)} <span class="muted">(${team.players.length}/${team.max_players} atletas, ${titulares} titulares)</span></h3>
       <label class="muted">Grupo
         <select class="group-select" data-team-id="${team.id}">
           <option value="">—</option>
           ${["A", "B"].map(g => `<option value="${g}"${team.group_name === g ? " selected" : ""}>${g}</option>`).join("")}
+        </select>
+      </label>
+      <label class="muted">Limite de atletas
+        <select class="max-players-select" data-team-id="${team.id}">
+          ${[7, 8].map(n => `<option value="${n}"${team.max_players === n ? " selected" : ""}>${n}</option>`).join("")}
         </select>
       </label>
       <div class="roster-list">
@@ -175,17 +180,20 @@ $("teams").addEventListener("submit", async e => {
 });
 
 $("teams").addEventListener("change", async e => {
-  if (!e.target.classList.contains("group-select")) return;
+  const isGroup = e.target.classList.contains("group-select");
+  const isMax = e.target.classList.contains("max-players-select");
+  if (!isGroup && !isMax) return;
   try {
     await api(`/api/teams/${e.target.dataset.teamId}`, {
       method: "PATCH",
-      body: JSON.stringify({ group_name: e.target.value || null }),
+      body: JSON.stringify(isGroup ? { group_name: e.target.value || null } : { max_players: Number(e.target.value) }),
     });
-    await loadState();
-    await loadStandings();
   } catch (err) {
     toast(err.message);
   }
+  // Reload either way so a refused change snaps back to the stored value.
+  await loadState();
+  await loadStandings();
 });
 
 $("teams").addEventListener("click", async e => {

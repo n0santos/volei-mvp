@@ -10,17 +10,27 @@ router = APIRouter()
 
 GROUPS = ("A", "B")
 
-# Regulation: up to 7 athletes per team, the 7th being the single reserve.
-MAX_TEAM_PLAYERS = 7
-MAX_RESERVES = 1
+# Regulation: up to 7 athletes per team (6 starters + reserves). The
+# organization can allow 8 for a single team via Team.max_players.
+ALLOWED_MAX_PLAYERS = (7, 8)
+STARTERS = 6
 
 
-def check_reserve_slot_free(db, team_id, ignore_player_id=None):
+def reserve_slots(team):
+    return team.max_players - STARTERS
+
+
+def count_reserves(db, team_id, ignore_player_id=None):
     query = select(TeamPlayer).where(TeamPlayer.team_id == team_id, TeamPlayer.role == "reserva")
     if ignore_player_id is not None:
         query = query.where(TeamPlayer.player_id != ignore_player_id)
-    if len(db.execute(query).scalars().all()) >= MAX_RESERVES:
-        raise HTTPException(409, "A equipe já tem um reserva")
+    return len(db.execute(query).scalars().all())
+
+
+def check_reserve_slot_free(db, team, ignore_player_id=None):
+    slots = reserve_slots(team)
+    if count_reserves(db, team.id, ignore_player_id) >= slots:
+        raise HTTPException(409, f"A equipe já tem {slots} reserva(s)")
 
 
 @router.post("/api/tournaments")
@@ -76,6 +86,16 @@ def update_team(team_id: int, data: TeamUpdate, db: DBSession = Depends(get_db))
             raise HTTPException(400, "Grupo precisa ser A ou B")
         team.group_name = data.group_name
 
+    if data.max_players is not None:
+        if data.max_players not in ALLOWED_MAX_PLAYERS:
+            raise HTTPException(400, "Limite de atletas precisa ser 7 ou 8")
+        roster_size = len(db.execute(select(TeamPlayer).where(TeamPlayer.team_id == team.id)).scalars().all())
+        if roster_size > data.max_players:
+            raise HTTPException(409, f"A equipe já tem {roster_size} atletas")
+        if count_reserves(db, team.id) > data.max_players - STARTERS:
+            raise HTTPException(409, "A equipe tem reservas demais para esse limite")
+        team.max_players = data.max_players
+
     db.commit()
     db.refresh(team)
     return team
@@ -97,6 +117,7 @@ def tournament_state(tournament_id: int, db: DBSession = Depends(get_db)):
             "id": team.id,
             "code": team.code,
             "group_name": team.group_name,
+            "max_players": team.max_players,
             "players": [
                 {
                     "id": p.id,
@@ -148,10 +169,10 @@ def add_team_player(team_id: int, data: TeamPlayerAdd, db: DBSession = Depends(g
         raise HTTPException(409, "Jogador já está em outro time deste torneio")
 
     roster_size = len(db.execute(select(TeamPlayer).where(TeamPlayer.team_id == team_id)).scalars().all())
-    if roster_size >= MAX_TEAM_PLAYERS:
-        raise HTTPException(409, f"A equipe já tem {MAX_TEAM_PLAYERS} atletas")
+    if roster_size >= team.max_players:
+        raise HTTPException(409, f"A equipe já tem {team.max_players} atletas")
     if data.role == "reserva":
-        check_reserve_slot_free(db, team_id)
+        check_reserve_slot_free(db, team)
 
     tp = TeamPlayer(team_id=team_id, player_id=data.player_id, role=data.role)
     db.add(tp)
@@ -178,7 +199,7 @@ def update_team_player(team_id: int, player_id: int, data: TeamPlayerUpdate, db:
 
     if data.role is not None:
         if data.role == "reserva":
-            check_reserve_slot_free(db, team_id, ignore_player_id=player_id)
+            check_reserve_slot_free(db, db.get(Team, team_id), ignore_player_id=player_id)
         tp.role = data.role
 
     if data.is_captain is True:

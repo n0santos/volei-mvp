@@ -92,6 +92,8 @@ class Team(Base):
     tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"))
     code: Mapped[str] = mapped_column(String(20))
     group_name: Mapped[str | None] = mapped_column(String(1), nullable=True)  # "A"/"B", set by hand after the draw
+    # Regulation: 7. The organization can raise it for a single team (e.g. an athlete only available one day).
+    max_players: Mapped[int] = mapped_column(Integer, default=7, server_default="7")
 
 
 class TeamPlayer(Base):
