@@ -84,6 +84,7 @@ async function refresh() {
   if (!sessionId) return;
   state = await api(`/api/sessions/${sessionId}`);
   renderAttendance();
+  renderVersus();
   renderMatch();
 }
 
@@ -179,6 +180,42 @@ function drawSummary(m) {
   return line;
 }
 
+// "Against a team" nights: pick the opponent (defaults to the one after the
+// last match) and how many people its side is short of.
+let versusKey = null;
+let versusOpponent = null;
+
+function renderVersus() {
+  const s = state.session;
+  const box = $("versus");
+  const badge = $("modeBadge");
+  badge.classList.remove("hidden");
+  badge.classList.toggle("versus", Boolean(s.opponents && s.opponents.length));
+  badge.textContent = s.opponents && s.opponents.length
+    ? `Modo contra equipe · ${s.opponents.join(" e ")}`
+    : "Modo 6×6";
+  box.classList.toggle("hidden", !(s.opponents && s.opponents.length));
+  if (box.classList.contains("hidden")) return;
+
+  // Every new match goes back to the default: the next team, nobody missing.
+  const key = `${s.opponents.join("|")}#${state.match_count}`;
+  if (key !== versusKey) {
+    versusKey = key;
+    versusOpponent = s.next_opponent;
+    $("missing").value = "0";
+  }
+  box.querySelector(".versus-options").innerHTML = s.opponents.map(o => `
+    <label class="versus-option${o === versusOpponent ? " selected" : ""}">
+      <input type="radio" name="versus" value="${esc(o)}"${o === versusOpponent ? " checked" : ""}>
+      ${mascot(o, "sm")}<span>${esc(o)}</span>
+    </label>`).join("");
+}
+
+document.querySelector(".versus-options").addEventListener("change", e => {
+  versusOpponent = e.target.value;
+  renderVersus();
+});
+
 function renderMatch() {
   const m = state.current_match;
   if (!m) {
@@ -190,18 +227,18 @@ function renderMatch() {
   const a = m.teams.A, b = m.teams.B;
   const sa = a.reduce((x,p)=>x+p.score,0);
   const sb = b.reduce((x,p)=>x+p.score,0);
-  $("balance").innerHTML = `Time A: ${sa.toFixed(0)} · Time B: ${sb.toFixed(0)} · diferença: ${Math.abs(sa-sb).toFixed(0)}`
+  // Against a team (m.opponent): only our side is drafted, the opponent is a fixed team.
+  $("balance").innerHTML = (m.opponent
+      ? (m.balance
+          ? `Média: time sorteado ${m.balance.ours_avg.toFixed(1)} · ${esc(m.opponent)} ${m.balance.opponent_avg.toFixed(1)}`
+            + ` <span class="muted">(notas dos homens +10, como no equilíbrio dos times)</span>`
+          : `Time sorteado: ${sa.toFixed(0)} pontos`)
+      : `Time A: ${sa.toFixed(0)} · Time B: ${sb.toFixed(0)} · diferença: ${Math.abs(sa-sb).toFixed(0)}`)
     + `<br><span class="muted">${esc(drawSummary(m))}</span>`;
 
-  $("teams").innerHTML = ["A","B"].map(team => {
-    const arr = m.teams[team];
-    const total = arr.reduce((x,p)=>x+p.score,0);
+  const memberRow = (p, canRelease = false) => {
+    const why = pickReason(p.id);
     return `
-      <div class="team">
-        <h3>Time ${team}</h3>
-        ${arr.map(p => {
-          const why = pickReason(p.id);
-          return `
           <div class="member">
             <span>${esc(p.name)} ${p.role === "substitute" ? '<span class="badge">sub</span>' : ''}
               ${why ? `<br><span class="${why.alert ? 'badge wait' : 'muted'}">${esc(why.text)}</span>` : ''}
@@ -210,15 +247,47 @@ function renderMatch() {
               `<button onclick="playerExit(${m.id},${p.id})">Saiu</button>` : ''}
             ${m.status === "proposed" ?
               `<button onclick="offerSwap(${m.id},${p.id})">Trocar</button>` : ''}
+            ${canRelease && !p.exited ?
+              `<button onclick="releaseFillIn(${m.id},${p.id})" title="Chegou alguém da equipe">Liberar</button>` : ''}
           </div>`;
-        }).join("")}
+  };
+
+  // Against a team the other side is the opponent's card: mascot and name, plus
+  // whoever was drafted to fill in for people the team is missing.
+  const opponentCard = m.opponent ? `
+      <div class="team opponent">
+        <h3>Adversário</h3>
+        ${mascot(m.opponent, "xl")}
+        <div class="opponent-name">${esc(m.opponent)}</div>
+        ${b.length ? `
+          <div class="fill-in">
+            <div class="muted">Completando a equipe</div>
+            ${b.map(p => memberRow(p, true)).join("")}
+            <p class="muted">Se chegar alguém da equipe, toque em Liberar: a pessoa volta pra fila sem perder a vez.</p>
+          </div>` : ""}
+      </div>` : "";
+
+  $("teams").innerHTML = (m.opponent ? ["A"] : ["A","B"]).map(team => {
+    const arr = m.teams[team];
+    const total = arr.reduce((x,p)=>x+p.score,0);
+    return `
+      <div class="team">
+        <h3>${m.opponent ? "Time sorteado" : `Time ${team}`}</h3>
+        ${arr.map(p => memberRow(p)).join("")}
         <div class="total">Total: ${total.toFixed(0)}</div>
       </div>`;
-  }).join("");
+  }).join("") + opponentCard;
 
   $("startMatch").classList.toggle("hidden", m.status !== "proposed");
   $("finishMatch").classList.toggle("hidden", m.status !== "running");
   $("substitution").classList.add("hidden");
+}
+
+async function releaseFillIn(matchId, playerId) {
+  try {
+    await api(`/api/matches/${matchId}/release/${playerId}`, {method:"POST"});
+    await refresh();
+  } catch(e) { toast(e.message); }
 }
 
 async function offerSwap(matchId, outId) {
@@ -293,13 +362,44 @@ $("togglePlayers").onclick = () => {
 
 $("attendanceSearch").oninput = () => renderAttendance();
 
+// New session: pick the name and the mode. Creating one ends the current one,
+// so the dialog says which one before it does.
 $("newSession").onclick = async () => {
   try {
-    const name = prompt("Nome da sessão:", "Vôlei " + new Date().toLocaleDateString("pt-BR"));
+    $("newSessionName").value = "Vôlei " + new Date().toLocaleDateString("pt-BR");
+    document.querySelector("input[name=sessionMode][value=normal]").checked = true;
+    $("versusTeams").classList.add("hidden");
+    const warning = $("newSessionWarning");
+    warning.classList.toggle("hidden", !sessionId);
+    if (sessionId) warning.textContent = `Isto encerra a sessão atual (${$("sessionName").textContent}). Ela fica guardada, mas sai da tela.`;
+
+    const t = await api("/api/tournaments/active");
+    const teams = t ? (await api(`/api/tournaments/${t.id}`)).teams : [];
+    $("versusTeamList").innerHTML = teams.length ? teams.map(team => `
+      <label class="choice"><input type="checkbox" name="versusTeam" value="${esc(team.code)}">
+        ${mascot(team.code, "sm")}<span>${esc(team.code)}</span></label>`).join("")
+      : '<p class="muted">Nenhum torneio ativo com equipes.</p>';
+    $("newSessionDialog").showModal();
+  } catch(e) { toast(e.message); }
+};
+
+document.querySelectorAll("input[name=sessionMode]").forEach(r => r.addEventListener("change", () => {
+  $("versusTeams").classList.toggle("hidden", document.querySelector("input[name=sessionMode]:checked").value !== "versus");
+}));
+$("newSessionCancel").onclick = () => $("newSessionDialog").close();
+
+$("newSessionForm").onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const name = $("newSessionName").value.trim();
     if (!name) return;
+    const versus = document.querySelector("input[name=sessionMode]:checked").value === "versus";
+    const opponents = [...document.querySelectorAll("input[name=versusTeam]:checked")].map(i => i.value);
+    if (versus && !opponents.length) { toast("Marque ao menos uma equipe adversária"); return; }
     const s = await api("/api/sessions", {
-      method:"POST", body:JSON.stringify({name})
+      method:"POST", body:JSON.stringify(versus ? {name, opponents} : {name})
     });
+    $("newSessionDialog").close();
     sessionId = s.id;
     $("sessionName").textContent = name;
     $("sessionPanel").classList.remove("hidden");
@@ -341,7 +441,9 @@ $("addOutside").onclick = async () => {
 };
 
 $("generate").onclick = () => busy([$("generate")], "Sorteando…", async () => {
-  await api(`/api/sessions/${sessionId}/generate`, {method:"POST"});
+  const versus = state.session.opponents && state.session.opponents.length
+    ? {opponent: versusOpponent, missing: Number($("missing").value)} : null;
+  await api(`/api/sessions/${sessionId}/generate`, versus ? {method:"POST", body:JSON.stringify(versus)} : {method:"POST"});
   await refresh();
   toast(`Partida ${state.current_match.number} sorteada`);
   // The teams render below the attendance list, off screen on a phone.

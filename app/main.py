@@ -1,4 +1,5 @@
 import json
+import random
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -11,12 +12,15 @@ from sqlalchemy.orm import Session as DBSession
 
 from .database import Base, engine, get_db, SessionLocal, add_missing_columns
 from .models import Player, Session as GameSession, Attendance, Match, MatchPlayer, Event
-from .schemas import PlayerCreate, SessionCreate, AttendanceUpdate, SubstituteRequest, SwapRequest
+from .schemas import PlayerCreate, SessionCreate, GenerateRequest, AttendanceUpdate, SubstituteRequest, SwapRequest
 from .services.selection import select_players, eligible_players, BLOCK_AFTER, SHARE_WEIGHT
-from .services.teams import balance_teams
+from .services.versus import opponent_average, best_split, side_gap
+from .services.teams import balance_teams, effective_score
 from .services.fairness import history
 from .tournament import router as tournament_router
 from .tournament_matches import router as tournament_matches_router
+
+TEAM_SIZE = 6  # players per side
 
 Base.metadata.create_all(bind=engine)
 add_missing_columns()
@@ -129,7 +133,8 @@ async def create_session(data: SessionCreate, db: DBSession = Depends(get_db)):
     for s in old:
         s.active = False
 
-    s = GameSession(name=data.name)
+    opponents = [o.strip() for o in (data.opponents or []) if o.strip()]
+    s = GameSession(name=data.name, opponents=json.dumps(opponents, ensure_ascii=False) if opponents else None)
     db.add(s)
     db.flush()
 
@@ -202,10 +207,13 @@ def session_state(session_id: int, db: DBSession = Depends(get_db)):
                 "id": m.id,
                 "number": m.number,
                 "status": m.status,
+                "opponent": m.opponent,
                 "started_at": m.started_at.isoformat() if m.started_at else None,
                 "teams": {"A": [], "B": []},
             }
             for mp, p in mps:
+                if mp.role == "released":
+                    continue  # a fill-in the opponent no longer needs
                 current["teams"][mp.team].append({
                     "id": p.id,
                     "name": p.name,
@@ -214,9 +222,23 @@ def session_state(session_id: int, db: DBSession = Depends(get_db)):
                     "role": mp.role,
                     "exited": mp.exited_at is not None,
                 })
+            if m.opponent:
+                opp_avg = opponent_average(db, m.opponent)
+                if opp_avg is not None:
+                    fill = [p for mp, p in mps if mp.team == "B" and mp.role != "released"]
+                    ours = [p for mp, p in mps if mp.team == "A"]
+                    # same maths as the draft: the rest of their side plays at the roster average
+                    current["balance"] = {
+                        "ours_avg": sum(effective_score(p) for p in ours) / TEAM_SIZE,
+                        "opponent_avg": (opp_avg * (TEAM_SIZE - len(fill)) + sum(effective_score(p) for p in fill)) / TEAM_SIZE,
+                    }
 
     return {
-        "session": {"id": s.id, "name": s.name},
+        "session": {
+            "id": s.id, "name": s.name,
+            "opponents": json.loads(s.opponents) if s.opponents else [],
+            "next_opponent": next_opponent(db, s.id, json.loads(s.opponents)) if s.opponents else None,
+        },
         "players": players_data,
         "current_match": current,
         "match_count": len(matches),
@@ -295,9 +317,20 @@ async def add_player_to_session(session_id: int, data: PlayerCreate, db: DBSessi
     return p
 
 
+def next_opponent(db: DBSession, session_id: int, opponents: list[str]):
+    """The opponent after the one of the latest match, in the session's order."""
+    last = db.execute(
+        select(Match.opponent).where(Match.session_id == session_id).order_by(Match.number.desc()).limit(1)
+    ).scalar_one_or_none()
+    if last in opponents:
+        return opponents[(opponents.index(last) + 1) % len(opponents)]
+    return opponents[0]
+
+
 @app.post("/api/sessions/{session_id}/generate")
-async def generate_match(session_id: int, db: DBSession = Depends(get_db)):
-    get_session(db, session_id)
+async def generate_match(session_id: int, db: DBSession = Depends(get_db), data: GenerateRequest | None = None):
+    session = get_session(db, session_id)
+    data = data or GenerateRequest()
     # Only one proposed/running match at a time.
     current = db.execute(
         select(Match).where(
@@ -308,16 +341,53 @@ async def generate_match(session_id: int, db: DBSession = Depends(get_db)):
     if current:
         raise HTTPException(409, "Já existe uma partida aberta")
 
-    chosen = select_players(db, session_id, 12)
+    opponents = json.loads(session.opponents) if session.opponents else []
+    opponent = None
+    missing = 0
+    if opponents:
+        opponent = data.opponent or next_opponent(db, session_id, opponents)
+        if opponent not in opponents:
+            raise HTTPException(400, "Adversário desconhecido nesta sessão")
+        if not 0 <= data.missing < TEAM_SIZE:
+            raise HTTPException(400, f"Faltam entre 0 e {TEAM_SIZE - 1} jogadores na equipe")
+        missing = data.missing
+    # Against a team the app drafts our side (6, no balancing) plus whoever the
+    # team is short of, so both sides are full.
+    # Who plays is decided by turns alone; the opponent's average only breaks ties.
+    opponent_avg = opponent_average(db, opponent) if opponent else None
+    balance = (lambda squad: side_gap(squad, missing, opponent_avg)) if opponent_avg is not None else None
+    chosen = select_players(db, session_id, TEAM_SIZE + missing if opponents else 12, balance=balance)
     if len(chosen) < 2:
         raise HTTPException(400, "É preciso ter pelo menos 2 jogadores presentes")
-
-    a, b, diff = balance_teams(chosen)
 
     last_num = db.execute(
         select(Match.number).where(Match.session_id == session_id)
     ).scalars().all()
     number = max(last_num, default=0) + 1
+
+    if opponents:
+        m = Match(session_id=session_id, number=number, status="proposed", opponent=opponent)
+        db.add(m)
+        db.flush()
+        # Who fills in for the team: the split closest in average to the opponent
+        # (a draw among equals); with no known roster, plain luck.
+        if opponent_avg is not None:
+            ours, fill_ins, gap = best_split(chosen, missing, opponent_avg)
+        else:
+            random.shuffle(chosen)
+            ours, fill_ins, gap = chosen[:TEAM_SIZE], chosen[TEAM_SIZE:], None
+        for p in ours:
+            db.add(MatchPlayer(match_id=m.id, player_id=p.id, team="A", role="starter"))
+        for p in fill_ins:
+            db.add(MatchPlayer(match_id=m.id, player_id=p.id, team="B", role="starter"))
+        event(db, session_id, "match_generated", match_id=m.id, payload={
+            "opponent": opponent, "missing": missing, "opponent_avg": opponent_avg, "gap": gap,
+        })
+        db.commit()
+        await broadcast(session_id)
+        return {"match_id": m.id}
+
+    a, b, diff = balance_teams(chosen)
 
     m = Match(session_id=session_id, number=number, status="proposed")
     db.add(m)
@@ -369,6 +439,38 @@ async def exit_player(match_id: int, player_id: int, db: DBSession = Depends(get
         raise HTTPException(404, "Jogador não está na partida")
     mp.exited_at = datetime.utcnow()
     event(db, m.session_id, "player_left_match", player_id, match_id)
+    db.commit()
+    await broadcast(m.session_id)
+    return {"ok": True}
+
+
+@app.post("/api/matches/{match_id}/release/{player_id}")
+async def release_fill_in(match_id: int, player_id: int, db: DBSession = Depends(get_db)):
+    """The opponent's own player showed up: let one of the people drafted to fill
+    in for the team go, without calling a replacement. Not a match played for them
+    (the draft counts only starters of a finished match), so they keep their turn."""
+    m = db.get(Match, match_id)
+    if not m or not m.opponent:
+        raise HTTPException(400, "Só vale para partida contra uma equipe")
+    if m.status == "finished":
+        raise HTTPException(400, "A partida já terminou")
+    mp = db.execute(
+        select(MatchPlayer).where(
+            MatchPlayer.match_id == match_id,
+            MatchPlayer.player_id == player_id,
+            MatchPlayer.team == "B",
+            MatchPlayer.exited_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if not mp:
+        raise HTTPException(404, "Esse jogador não está completando a equipe")
+
+    if m.status == "proposed":
+        db.delete(mp)  # never took the court
+    else:
+        mp.role = "released"
+        mp.exited_at = datetime.utcnow()
+    event(db, m.session_id, "fill_in_released", player_id, match_id)
     db.commit()
     await broadcast(m.session_id)
     return {"ok": True}

@@ -14,20 +14,18 @@ def make_db():
     return sessionmaker(bind=engine)()
 
 
-def make_tournament_and_teams(db, codes=("A", "B"), groups=None):
+def make_tournament_and_teams(db, codes=("A", "B")):
     t = Tournament(name="Torneio", start_date=date(2026, 11, 28), end_date=date(2026, 11, 29))
     db.add(t)
     db.flush()
-    groups = groups or (None,) * len(codes)
-    teams = [Team(tournament_id=t.id, code=code, group_name=g) for code, g in zip(codes, groups)]
+    teams = [Team(tournament_id=t.id, code=code) for code in codes]
     db.add_all(teams)
     db.flush()
     return t, teams
 
 
 def standings_rows(tournament_id, db):
-    # Flat view of every group's rows - enough for tests that don't care about groups.
-    return [row for g in get_standings(tournament_id, db) for row in g["rows"]]
+    return get_standings(tournament_id, db)["rows"]
 
 
 def make_finished_match(db, tournament_id, team_a_id, team_b_id, sets, stage="grupos"):
@@ -146,70 +144,31 @@ def test_encerrado_match_with_one_closed_set_does_not_crash_standings():
     assert by_team["B"]["tournament_points"] == 0
 
 
-def test_standings_are_split_by_group():
+def test_nobody_qualifies_while_games_are_still_to_play():
     db = make_db()
-    t, (a, b, c, d) = make_tournament_and_teams(db, codes=("A", "B", "C", "D"), groups=("A", "A", "B", "B"))
-    make_finished_match(db, t.id, a.id, b.id, [(15, 10), (15, 12)])
-    make_finished_match(db, t.id, c.id, d.id, [(15, 10), (15, 12)])
+    t, teams = make_tournament_and_teams(db, codes=("A", "B", "C", "D", "E", "F"))
+    make_finished_match(db, t.id, teams[0].id, teams[1].id, [(15, 10), (15, 12)])
 
-    groups = get_standings(t.id, db)
+    table = get_standings(t.id, db)
 
-    assert [g["group"] for g in groups] == ["A", "B"]
-    assert {r["team"] for r in groups[0]["rows"]} == {"A", "B"}
-    assert {r["team"] for r in groups[1]["rows"]} == {"C", "D"}
-    assert groups[0]["rows"][0]["team"] == "A"
-    assert groups[1]["rows"][0]["team"] == "C"
+    assert table["complete"] is False
+    assert all(r["qualified"] is False for r in table["rows"])
+    assert len(table["rows"]) == 6
 
 
-def test_teams_without_a_group_go_in_a_trailing_block_and_never_qualify():
+def test_top_four_of_the_complete_table_qualify():
     db = make_db()
-    t, (a, b, c) = make_tournament_and_teams(db, codes=("A", "B", "C"), groups=("A", "A", None))
+    t, teams = make_tournament_and_teams(db, codes=("A", "B", "C", "D", "E", "F"))
+    a, b, c, d, e, f = teams
+    # nine games; wins A=3, B=2, C=2... every pairing decided 2-0 (15-10, 15-12)
+    for x, y in [(a, b), (c, d), (e, f), (a, c), (b, e), (d, f), (a, d), (b, f), (c, e)]:
+        make_finished_match(db, t.id, x.id, y.id, [(15, 10), (15, 12)])
 
-    groups = get_standings(t.id, db)
+    table = get_standings(t.id, db)
 
-    assert [g["group"] for g in groups] == ["A", None]
-    assert [r["team"] for r in groups[1]["rows"]] == ["C"]
-    assert all(r["qualified"] is False for r in groups[1]["rows"])
-
-
-def test_top_two_of_a_complete_group_qualify():
-    db = make_db()
-    t, (a, b, c) = make_tournament_and_teams(db, codes=("A", "B", "C"), groups=("A", "A", "A"))
-    make_finished_match(db, t.id, a.id, b.id, [(15, 10), (15, 12)])  # A: 3
-    make_finished_match(db, t.id, a.id, c.id, [(15, 10), (15, 12)])  # A: 6
-    make_finished_match(db, t.id, b.id, c.id, [(15, 10), (15, 12)])  # B: 3, C: 0
-
-    (group,) = get_standings(t.id, db)
-
-    assert group["complete"] is True
-    assert [(r["team"], r["qualified"]) for r in group["rows"]] == [("A", True), ("B", True), ("C", False)]
-
-
-def test_nobody_qualifies_while_the_group_still_has_games_to_play():
-    # A-B and B-C are done and the table already has a clear order, but A-C
-    # is still to play and could reshuffle it.
-    db = make_db()
-    t, (a, b, c) = make_tournament_and_teams(db, codes=("A", "B", "C"), groups=("A", "A", "A"))
-    make_finished_match(db, t.id, a.id, b.id, [(15, 10), (15, 12)])
-    make_finished_match(db, t.id, b.id, c.id, [(15, 10), (15, 12)])
-
-    (group,) = get_standings(t.id, db)
-
-    assert group["complete"] is False
-    assert all(r["qualified"] is False for r in group["rows"])
-
-
-def test_a_tie_for_the_last_spot_leaves_everyone_unqualified():
-    # Three-way cycle with identical scores (A beats B, B beats C, C beats A):
-    # everything ties, so picking two of the three would be arbitrary.
-    db = make_db()
-    t, (a, b, c) = make_tournament_and_teams(db, codes=("A", "B", "C"), groups=("A", "A", "A"))
-    make_finished_match(db, t.id, a.id, b.id, [(15, 10), (15, 10)])
-    make_finished_match(db, t.id, b.id, c.id, [(15, 10), (15, 10)])
-    make_finished_match(db, t.id, c.id, a.id, [(15, 10), (15, 10)])
-
-    (group,) = get_standings(t.id, db)
-
-    assert group["complete"] is True
-    assert all(r["tied"] for r in group["rows"])
-    assert all(r["qualified"] is False for r in group["rows"])
+    assert table["complete"] is True
+    qualified = [r["team"] for r in table["rows"] if r["qualified"]]
+    # A 3 wins; B and C 2 each; D and E 1 each tie for the last spot -> nobody is
+    # picked arbitrarily, so the cut is left to the organization
+    assert qualified == []
+    assert [r["tied"] for r in table["rows"]][-3:-1] == [True, True]

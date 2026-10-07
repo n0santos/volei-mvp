@@ -8,20 +8,24 @@ from .database import get_db
 from .models import Team, TournamentMatch, TournamentSetResult
 from .schemas import (
     TournamentMatchCreate, TournamentMatchUpdate, SetPointRequest,
-    GenerateSemifinalsRequest, GenerateFinalsRequest, WalkoverRequest,
+    GenerateSemifinalsRequest, GenerateFinalRequest, WalkoverRequest, DrawRequest,
 )
-from .services.tournament_engine import SET_TARGETS, is_set_over, match_result, compute_standings, mark_qualified
+from .services.tournament_engine import (
+    SET_TARGETS, DRAW_SLOTS, DRAW_FIXTURES, QUALIFIED,
+    is_set_over, match_result, compute_standings, mark_qualified,
+)
 from .tournament import get_tournament
 
 router = APIRouter()
 
 MATCH_STATUSES = {"agendado", "em_andamento", "encerrado"}
 
-STAGES = {"grupos", "semifinal_1", "semifinal_2", "terceiro_lugar", "final"}
-# Knockout stages happen once per tournament; group games repeat.
+# "grupos" is the qualifying round (all teams in one table); the name is kept because it is stored in existing rows.
+STAGES = {"grupos", "semifinal_1", "semifinal_2", "final"}
+# Knockout stages happen once per tournament; qualifying games repeat.
 KNOCKOUT_STAGES = STAGES - {"grupos"}
 # Position in the tournament: a stage can't be undone once a later one exists.
-STAGE_ORDER = {"grupos": 0, "semifinal_1": 1, "semifinal_2": 1, "terceiro_lugar": 2, "final": 2}
+STAGE_ORDER = {"grupos": 0, "semifinal_1": 1, "semifinal_2": 1, "final": 2}
 
 WALKOVER_POINTS = 15  # regulation: a W.O. is 2x0 with partials of 15x0 and 15x0
 
@@ -316,9 +320,9 @@ def close_set(tournament_id: int, match_id: int, db: DBSession = Depends(get_db)
     return serialize_set(open_set)
 
 
-def group_standings(db, tournament_id, teams):
-    """Standings among `teams` only (one group). Returns (rows, complete),
-    where complete means every pair of teams has a decided match."""
+def qualifying_standings(db, tournament_id, teams):
+    """The overall table over all `teams`. Returns (rows, complete), where
+    complete means every game of the draw (len(DRAW_FIXTURES)) is decided."""
     team_codes = {team.id: team.code for team in teams}
 
     finished_matches = db.execute(
@@ -330,14 +334,12 @@ def group_standings(db, tournament_id, teams):
     ).scalars().all()
 
     engine_matches = []
-    played_pairs = set()
     for m in finished_matches:
         if m.team_a_id not in team_codes or m.team_b_id not in team_codes:
             continue
         if decided_result(db, m.id) is None:
             continue
         sets = get_closed_sets(db, m.id)
-        played_pairs.add(frozenset((m.team_a_id, m.team_b_id)))
         engine_matches.append(SimpleNamespace(
             team_a=team_codes[m.team_a_id],
             team_b=team_codes[m.team_b_id],
@@ -345,10 +347,7 @@ def group_standings(db, tournament_id, teams):
         ))
 
     standings = compute_standings(engine_matches, teams=team_codes.values())
-
-    n = len(teams)
-    complete = n >= 2 and len(played_pairs) == n * (n - 1) // 2
-    return standings, complete
+    return standings, len(engine_matches) >= len(DRAW_FIXTURES)
 
 
 @router.get("/api/tournaments/{tournament_id}/standings")
@@ -358,22 +357,13 @@ def get_standings(tournament_id: int, db: DBSession = Depends(get_db)):
         select(Team).where(Team.tournament_id == tournament_id).order_by(Team.code)
     ).scalars().all()
 
-    by_group = {}
-    for team in teams:
-        by_group.setdefault(team.group_name, []).append(team)
-
-    # Real groups first (A, B); teams not drawn yet go in a trailing None block.
-    result = []
-    for group in sorted(by_group, key=lambda g: (g is None, g or "")):
-        rows, complete = group_standings(db, tournament_id, by_group[group])
-        if group is not None and complete:
-            mark_qualified(rows)
-        else:
-            for row in rows:
-                row["qualified"] = False
-        result.append({"group": group, "complete": complete, "rows": rows})
-
-    return result
+    rows, complete = qualifying_standings(db, tournament_id, teams)
+    if complete:
+        mark_qualified(rows, QUALIFIED)
+    else:
+        for row in rows:
+            row["qualified"] = False
+    return {"complete": complete, "rows": rows}
 
 
 def stage_match(db, tournament_id, stage):
@@ -395,39 +385,82 @@ def winner_and_loser(db, m):
     return m.team_b_id, m.team_a_id
 
 
+@router.post("/api/tournaments/{tournament_id}/draw")
+def register_draw(tournament_id: int, data: DrawRequest, db: DBSession = Depends(get_db)):
+    """Turn the draw (slot A-F -> team) into the qualifying games. Replaces
+    qualifying games that haven't started; refuses if any has a result."""
+    get_tournament(db, tournament_id)
+    if set(data.slots) != set(DRAW_SLOTS):
+        raise HTTPException(400, "O sorteio precisa definir as posições A, B, C, D, E e F")
+    if len(set(data.slots.values())) != len(DRAW_SLOTS):
+        raise HTTPException(400, "Cada equipe só pode aparecer uma vez no sorteio")
+    if len(data.times) != len(DRAW_FIXTURES):
+        raise HTTPException(400, f"Informe os {len(DRAW_FIXTURES)} horários dos jogos")
+
+    teams = list(db.execute(select(Team).where(Team.tournament_id == tournament_id)).scalars())
+    if len({team.id for team in teams} & set(data.slots.values())) != len(DRAW_SLOTS):
+        raise HTTPException(404, "Equipe do sorteio não encontrada neste torneio")
+    if len(teams) != len(DRAW_SLOTS):
+        raise HTTPException(409, "Este formato precisa de exatamente 6 equipes no torneio")
+
+    existing = db.execute(
+        select(TournamentMatch).where(
+            TournamentMatch.tournament_id == tournament_id,
+            TournamentMatch.stage == "grupos",
+        )
+    ).scalars().all()
+    for m in existing:
+        started = db.execute(
+            select(TournamentSetResult).where(TournamentSetResult.match_id == m.id)
+        ).first() is not None
+        if m.status != "agendado" or started or m.walkover:
+            raise HTTPException(409, "Já há jogo da classificatória iniciado ou encerrado")
+    for m in existing:
+        db.execute(delete(TournamentSetResult).where(TournamentSetResult.match_id == m.id))
+        db.delete(m)
+
+    created = [
+        TournamentMatch(
+            tournament_id=tournament_id,
+            team_a_id=data.slots[a], team_b_id=data.slots[b],
+            scheduled_at=when, stage="grupos",
+        )
+        for (a, b), when in zip(DRAW_FIXTURES, data.times)
+    ]
+    db.add_all(created)
+    db.commit()
+    for m in created:
+        db.refresh(m)
+    return created
+
+
 @router.post("/api/tournaments/{tournament_id}/generate-semifinals")
 def generate_semifinals(tournament_id: int, data: GenerateSemifinalsRequest, db: DBSession = Depends(get_db)):
     get_tournament(db, tournament_id)
     if stage_match(db, tournament_id, "semifinal_1") or stage_match(db, tournament_id, "semifinal_2"):
         raise HTTPException(409, "As semifinais já foram cadastradas")
 
-    groups = {g["group"]: g for g in get_standings(tournament_id, db)}
+    table = get_standings(tournament_id, db)
+    if not table["complete"]:
+        raise HTTPException(400, "A classificatória ainda não terminou")
     teams_by_code = {
         team.code: team.id
         for team in db.execute(select(Team).where(Team.tournament_id == tournament_id)).scalars()
     }
+    top = [teams_by_code[row["team"]] for row in table["rows"] if row["qualified"]]
+    if len(top) < QUALIFIED:
+        raise HTTPException(
+            400, "Empate na classificação — decida por sorteio e cadastre as semifinais à mão"
+        )
 
-    qualified = {}
-    for name in ("A", "B"):
-        group = groups.get(name)
-        if group is None or not group["complete"]:
-            raise HTTPException(400, f"O grupo {name} ainda não terminou")
-        top = [teams_by_code[row["team"]] for row in group["rows"] if row["qualified"]]
-        if len(top) < 2:
-            raise HTTPException(
-                400, f"Empate na classificação do grupo {name} — decida por sorteio e cadastre as semifinais à mão"
-            )
-        qualified[name] = top
-
-    first_a, second_a = qualified["A"]
-    first_b, second_b = qualified["B"]
+    first, second, third, fourth = top
     semis = [
         TournamentMatch(
-            tournament_id=tournament_id, team_a_id=first_a, team_b_id=second_b,
+            tournament_id=tournament_id, team_a_id=first, team_b_id=fourth,
             scheduled_at=data.semifinal_1_at, court=data.court, stage="semifinal_1",
         ),
         TournamentMatch(
-            tournament_id=tournament_id, team_a_id=first_b, team_b_id=second_a,
+            tournament_id=tournament_id, team_a_id=second, team_b_id=third,
             scheduled_at=data.semifinal_2_at, court=data.court, stage="semifinal_2",
         ),
     ]
@@ -438,34 +471,28 @@ def generate_semifinals(tournament_id: int, data: GenerateSemifinalsRequest, db:
     return semis
 
 
-@router.post("/api/tournaments/{tournament_id}/generate-finals")
-def generate_finals(tournament_id: int, data: GenerateFinalsRequest, db: DBSession = Depends(get_db)):
+@router.post("/api/tournaments/{tournament_id}/generate-final")
+def generate_final(tournament_id: int, data: GenerateFinalRequest, db: DBSession = Depends(get_db)):
     get_tournament(db, tournament_id)
-    if stage_match(db, tournament_id, "final") or stage_match(db, tournament_id, "terceiro_lugar"):
-        raise HTTPException(409, "A final e o 3º lugar já foram cadastrados")
+    if stage_match(db, tournament_id, "final"):
+        raise HTTPException(409, "A final já foi cadastrada")
 
-    outcomes = []
+    winners = []
     for stage in ("semifinal_1", "semifinal_2"):
         m = stage_match(db, tournament_id, stage)
         outcome = winner_and_loser(db, m) if m else None
         if outcome is None:
             raise HTTPException(400, "As duas semifinais precisam estar decididas")
-        outcomes.append(outcome)
+        winners.append(outcome[0])
 
-    (win_1, lose_1), (win_2, lose_2) = outcomes
-    third = TournamentMatch(
-        tournament_id=tournament_id, team_a_id=lose_1, team_b_id=lose_2,
-        scheduled_at=data.third_place_at, court=data.court, stage="terceiro_lugar",
-    )
     final = TournamentMatch(
-        tournament_id=tournament_id, team_a_id=win_1, team_b_id=win_2,
+        tournament_id=tournament_id, team_a_id=winners[0], team_b_id=winners[1],
         scheduled_at=data.final_at, court=data.court, stage="final", is_final=True,
     )
-    db.add_all([third, final])
+    db.add(final)
     db.commit()
-    db.refresh(third)
     db.refresh(final)
-    return [third, final]
+    return final
 
 
 @router.get("/api/tournaments/{tournament_id}/podium")
@@ -476,16 +503,9 @@ def get_podium(tournament_id: int, db: DBSession = Depends(get_db)):
         for team in db.execute(select(Team).where(Team.tournament_id == tournament_id)).scalars()
     }
 
-    def code_of(team_id):
-        return codes.get(team_id) if team_id is not None else None
-
     final = stage_match(db, tournament_id, "final")
-    third = stage_match(db, tournament_id, "terceiro_lugar")
-    final_outcome = winner_and_loser(db, final) if final else None
-    third_outcome = winner_and_loser(db, third) if third else None
-
+    outcome = winner_and_loser(db, final) if final else None
     return {
-        "champion": code_of(final_outcome[0]) if final_outcome else None,
-        "runner_up": code_of(final_outcome[1]) if final_outcome else None,
-        "third_place": code_of(third_outcome[0]) if third_outcome else None,
+        "champion": codes.get(outcome[0]) if outcome else None,
+        "runner_up": codes.get(outcome[1]) if outcome else None,
     }

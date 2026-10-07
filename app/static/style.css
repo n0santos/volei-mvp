@@ -288,6 +288,33 @@ body.torneio {
   color: var(--mute);
 }
 
+/* Sorteio: one row per qualifying game, previewing the pairing as slots are filled */
+.torneio .draw-games { display: flex; flex-direction: column; margin-bottom: 8px; }
+.torneio .draw-game {
+  display: grid;
+  grid-template-columns: 4.2rem minmax(0, 1fr) 7.5rem 6rem;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+}
+.torneio .draw-game:first-child { border-top: 0; }
+.torneio .dg-n { font-weight: 600; color: var(--mute); font-size: 14px; }
+.torneio .dg-teams {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.torneio .dg-side { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.torneio .dg-side:first-child { justify-content: flex-end; text-align: right; }
+.torneio .dg-x { color: var(--mute); font-weight: 400; }
+.torneio .dg-open { color: var(--mute); font-weight: 500; font-family: var(--font-body); font-size: 14px; }
+#drawHint { margin: 4px 0 12px; }
+
 /* Jogos: one aligned row per match, teams mirrored around a central axis */
 .torneio .fixtures { display: flex; flex-direction: column; }
 .torneio .fixture {
@@ -328,8 +355,10 @@ body.torneio {
   font-size: 18px;
   line-height: 1.2;
 }
-.torneio .fx-team.a { text-align: right; }
+.torneio .fx-team { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.torneio .fx-team.a { text-align: right; justify-content: flex-end; }
 .torneio .fx-team.b { text-align: left; }
+.torneio .fx-team.lost .mascot { opacity: .55; }
 .torneio .fx-team.won { color: var(--palm); }
 .torneio .fx-team.lost { color: var(--mute); font-weight: 500; }
 .torneio .fx-score {
@@ -393,14 +422,7 @@ body.torneio {
 
 /* Equipes */
 .torneio .btn.sm { padding: 6px 11px; font-size: 14px; }
-.torneio .team-group { margin: 22px 0 0; }
-.torneio .group-title {
-  margin: 0 0 10px 2px;
-  font-family: var(--font-display);
-  font-size: 19px;
-  letter-spacing: -0.01em;
-}
-.torneio .group-title .muted { margin-left: 8px; font-family: var(--font-body); font-weight: 400; }
+.torneio #teams { margin-top: 14px; }
 .torneio .team-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -414,6 +436,46 @@ body.torneio {
   padding: 14px;
 }
 .torneio .tc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.torneio .tc-id { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mascot {
+  flex: none;
+  object-fit: cover;
+  background: #0b0f1a;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(22, 35, 59, .18);
+}
+.mascot.sm { width: 32px; height: 32px; border-radius: 7px; }
+.mascot.lg { width: 60px; height: 60px; border-radius: 10px; }
+.mascot.xl { width: 132px; height: 132px; border-radius: 14px; }
+.mode-badge {
+  display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; background: rgba(255,255,255,.14); color: white;
+}
+.mode-badge.versus { background: var(--ball); color: white; }
+#newSessionDialog { border: 0; border-radius: 12px; padding: 0; width: min(480px, calc(100vw - 32px)); box-shadow: 0 12px 40px rgba(0,0,0,.3); }
+#newSessionDialog::backdrop { background: rgba(10, 20, 35, .55); }
+#newSessionForm { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+#newSessionForm h2 { margin: 0; }
+#newSessionForm label:not(.choice) { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #5b6b7a; }
+#newSessionForm fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+#newSessionForm .choice { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.session-warning { margin: 0; padding: 10px 12px; border-radius: 8px; background: #fdf0e6; color: #8a4a12; font-size: 14px; }
+#newSessionForm .actions { justify-content: flex-end; }
+.versus { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 16px; margin: 0 0 12px; }
+.versus-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.versus-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 6px; border: 1px solid var(--border); border-radius: 10px;
+  background: white; cursor: pointer; font-weight: 600;
+}
+.versus-option.selected { border-color: var(--court); box-shadow: 0 0 0 2px var(--court); }
+.versus-option input { position: absolute; opacity: 0; pointer-events: none; }
+.versus-option:focus-within { outline: 2px solid var(--ink); outline-offset: 2px; }
+.versus-missing { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #5b6b7a; }
+.team.opponent .fill-in { align-self: stretch; margin-top: 12px; text-align: left; }
+.team.opponent { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.team.opponent h3 { align-self: stretch; text-align: left; }
+.opponent-name { margin-top: 10px; font-family: var(--font-display); font-size: 20px; line-height: 1.2; letter-spacing: -0.01em; }
 .torneio .tc-name {
   margin: 0;
   font-family: var(--font-display);
@@ -444,12 +506,6 @@ body.torneio {
 .torneio .team-card .add-player-form button { flex: 0 0 auto; }
 
 /* Classificação */
-.torneio .group-tables {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 0 16px;
-  align-items: start;
-}
 .torneio .st-row {
   display: grid;
   grid-template-columns: 1.9rem minmax(0, 1fr) 1.7rem 1.7rem 2.3rem 2.7rem 2.7rem;
@@ -478,6 +534,9 @@ body.torneio {
 }
 .torneio .st-row.qualified .st-pos { background: var(--palm); color: white; }
 .torneio .st-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--font-display);
   font-weight: 700;
   line-height: 1.2;
@@ -499,7 +558,7 @@ body.torneio {
   border-radius: 10px;
 }
 .torneio .place-n { font-family: var(--font-display); font-weight: 700; font-size: 22px; }
-.torneio .place-team { font-family: var(--font-display); font-weight: 700; font-size: 18px; }
+.torneio .place-team { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 18px; }
 .torneio .place-label { font-size: 13px; color: var(--mute); }
 .torneio .place.gold { background: var(--sun-tint); border-color: var(--sun); }
 .torneio .place.gold .place-team { font-size: 22px; }
@@ -514,11 +573,17 @@ body.torneio {
     grid-template-areas: "when actions" "teams teams" "meta meta";
     row-gap: 10px;
   }
+  .torneio .draw-game { grid-template-columns: 1fr 1fr 6rem; grid-template-areas: "n n n" "teams teams teams" "day day time"; }
+  .torneio .dg-n { grid-area: n; }
+  .torneio .dg-teams { grid-area: teams; }
+  .torneio .dg-day { grid-area: day; }
+  .torneio .dg-time { grid-area: time; }
   .torneio .fx-actions { justify-self: end; }
   .torneio .fx-teams { font-size: 17px; }
-  .torneio .group-tables { grid-template-columns: 1fr; }
   .torneio .st-row { grid-template-columns: 1.9rem minmax(0, 1fr) 1.5rem 1.5rem 2.1rem 2.5rem 2.3rem; }
-  .torneio .st-team { font-size: 15px; }
+  .torneio .st-team { font-size: 15px; gap: 6px; }
+  .torneio .fx-team { gap: 6px; }
+  .mascot.sm { width: 28px; height: 28px; }
   .torneio .place { grid-template-columns: 2.4rem minmax(0, 1fr); row-gap: 2px; }
   .torneio .place-n { grid-row: 1 / span 2; }
   .torneio .place-label { grid-column: 2; }

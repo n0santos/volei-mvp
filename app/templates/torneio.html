@@ -56,11 +56,26 @@
     </div>
 
     <div id="matchesSection" class="tab-pane hidden" data-pane="jogos">
+      <section id="drawSection" class="panel hidden">
+        <div class="stage-head">
+          <div>
+            <h2>Sorteio dos confrontos</h2>
+            <div class="muted">Escolha a equipe de cada posição para criar os 9 jogos da classificatória.</div>
+          </div>
+        </div>
+        <form id="drawForm">
+          <div id="drawSlots" class="action-panel"></div>
+          <div id="drawGames" class="draw-games"></div>
+          <p id="drawHint" class="muted"></p>
+          <button id="drawBtn" class="primary" disabled>Registrar sorteio</button>
+        </form>
+      </section>
+
       <section class="panel">
         <div class="stage-head">
           <div>
-            <h2>Fase de grupos</h2>
-            <div id="groupProgress" class="muted"></div>
+            <h2>Classificatória</h2>
+            <div id="qualifyingProgress" class="muted"></div>
           </div>
           <button type="button" id="addMatchToggle" class="primary" aria-expanded="false" aria-controls="matchForm">+ Jogo</button>
         </div>
@@ -71,36 +86,34 @@
           <label>Horário <input id="matchTime" type="time" required></label>
           <label>Fase
             <select id="matchStage">
-              <option value="grupos">Fase de grupos</option>
+              <option value="grupos">Classificatória</option>
               <option value="semifinal_1">Semifinal 1</option>
               <option value="semifinal_2">Semifinal 2</option>
-              <option value="terceiro_lugar">3º lugar</option>
               <option value="final">Final</option>
             </select>
           </label>
           <button class="primary">Adicionar jogo</button>
         </form>
-        <div id="groupMatches" class="fixtures"></div>
+        <div id="qualifyingMatches" class="fixtures"></div>
       </section>
 
       <section class="panel">
         <div class="stage-head">
           <div>
             <h2>Fase final</h2>
-            <div class="muted">Semifinais, 3º lugar e final</div>
+            <div class="muted">Semifinais e final</div>
           </div>
         </div>
         <form id="generateSemisForm" class="action-panel">
-          <p id="semisHint">Disponível quando os dois grupos terminarem.</p>
+          <p id="semisHint">Disponível quando os 9 jogos da classificatória terminarem.</p>
           <label>Semifinal 1 <input id="semi1At" type="time" value="09:00" required></label>
           <label>Semifinal 2 <input id="semi2At" type="time" value="10:00" required></label>
           <button id="semisBtn" class="primary" disabled>Gerar semifinais</button>
         </form>
-        <form id="generateFinalsForm" class="action-panel">
-          <p id="finalsHint">Disponível quando as duas semifinais terminarem.</p>
-          <label>3º lugar <input id="thirdAt" type="time" value="11:00" required></label>
+        <form id="generateFinalForm" class="action-panel">
+          <p id="finalHint">Disponível quando as duas semifinais terminarem.</p>
           <label>Final <input id="finalAt" type="time" value="12:00" required></label>
-          <button id="finalsBtn" class="primary" disabled>Gerar 3º lugar e final</button>
+          <button id="finalBtn" class="primary" disabled>Gerar final</button>
         </form>
         <div id="finalMatches" class="fixtures"></div>
       </section>
@@ -111,12 +124,14 @@
         <h2>Pódio</h2>
         <ol id="podiumBody" class="podium"></ol>
       </section>
-      <div id="standingsBody" class="group-tables"></div>
-      <p class="legend muted">J jogos, V vitórias, SS saldo de sets, SP saldo de pontos, Pts pontos. Os dois primeiros de cada grupo avançam.</p>
+      <div id="standingsBody"></div>
+      <p class="legend muted">J jogos, V vitórias, SS saldo de sets, SP saldo de pontos, Pts pontos. Os quatro primeiros avançam.</p>
     </div>
   </main>
 </div>
 <div id="toast"></div>
+<script src="/static/mascotes/lista.js"></script>
+<script src="/static/mascotes.js"></script>
 <script src="/static/torneio.js"></script>
 </body>
 </html>

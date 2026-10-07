@@ -12,6 +12,14 @@ class PlayerCreate(BaseModel):
 class SessionCreate(BaseModel):
     name: str = "Vôlei"
     player_ids: list[int] | None = None
+    opponents: list[str] | None = None  # "against a team" night: 6 drafted per match vs these teams, in turn
+
+
+class GenerateRequest(BaseModel):
+    # Against a team: which one (default: the other one than last match) and how
+    # many are missing from its side - that many extra players are drafted to fill in.
+    opponent: str | None = None
+    missing: int = 0
 
 
 class AttendanceUpdate(BaseModel):
@@ -38,7 +46,7 @@ class TeamCreate(BaseModel):
 
 
 class TeamUpdate(BaseModel):
-    group_name: str | None = None
+    code: str | None = None
     max_players: int | None = None
 
 
@@ -80,10 +88,14 @@ class GenerateSemifinalsRequest(BaseModel):
     court: str | None = None
 
 
-class GenerateFinalsRequest(BaseModel):
-    third_place_at: datetime
+class GenerateFinalRequest(BaseModel):
     final_at: datetime
     court: str | None = None
+
+
+class DrawRequest(BaseModel):
+    slots: dict[str, int]  # slot letter "A".."F" -> team id, as drawn
+    times: list[datetime]  # one per qualifying game, in fixture order
 
 
 class WalkoverRequest(BaseModel):

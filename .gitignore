@@ -8,4 +8,6 @@ volei.db
 volei.db.bak-*
 data/
 .env
+app/static/mascotes/*.jpg
+app/static/mascotes/lista.js
 .DS_Store

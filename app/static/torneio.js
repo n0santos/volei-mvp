@@ -41,7 +41,7 @@ function fmtDate(s) {
 
 const TABS = ["jogos", "classificacao", "equipes"];
 
-// The tournament runs on known days (groups on the first, the knockout on the
+// The tournament runs on known days (qualifying games first, the knockout on the
 // last), so games are placed by day + time instead of a free date field.
 let tournamentDays = [];
 
@@ -115,6 +115,7 @@ async function loadState() {
   const state = await api(`/api/tournaments/${tournamentId}`);
   lastTeams = state.teams;
   renderTeams(state.teams);
+  renderDraw();
 
   populateTeamSelect($("matchTeamA"), state.teams);
   populateTeamSelect($("matchTeamB"), state.teams);
@@ -128,19 +129,7 @@ function renderTeams(teams) {
   const athletes = teams.reduce((sum, t) => sum + t.players.length, 0);
   $("teamsSummary").textContent = `${teams.length} equipes, ${athletes} atletas`;
 
-  // Group A, group B, then teams still without a group
-  const groups = [...new Set(teams.map(t => t.group_name))].sort((a, b) => (a === null) - (b === null) || String(a).localeCompare(b));
-  $("teams").innerHTML = groups.map(g => {
-    const inGroup = teams.filter(t => t.group_name === g);
-    return `
-      <section class="team-group">
-        <h3 class="group-title">${g ? `Grupo ${esc(g)}` : "Sem grupo"}
-          <span class="muted">${inGroup.length} ${inGroup.length === 1 ? "equipe" : "equipes"}</span>
-        </h3>
-        <div class="team-grid">${inGroup.map(renderTeam).join("")}</div>
-      </section>
-    `;
-  }).join("");
+  $("teams").innerHTML = `<div class="team-grid">${teams.map(renderTeam).join("")}</div>`;
 }
 
 function renderTeam(team) {
@@ -153,18 +142,18 @@ function renderTeam(team) {
   return `
     <article class="team-card" data-team-id="${team.id}">
       <div class="tc-head">
-        <div>
-          <h4 class="tc-name">${esc(team.code)}</h4>
-          <div class="tc-count${full ? " full" : ""}">${team.players.length} de ${team.max_players} atletas</div>
+        <div class="tc-id">
+          ${mascot(team.code, "lg")}
+          <div>
+            <h4 class="tc-name">${esc(team.code)}</h4>
+            <div class="tc-count${full ? " full" : ""}">${team.players.length} de ${team.max_players} atletas</div>
+          </div>
         </div>
         <details class="more">
           <summary class="btn sm" aria-label="Ajustes da equipe">Ajustes</summary>
           <div class="more-menu">
-            <label class="tournament-label">Grupo
-              <select class="group-select" data-team-id="${team.id}">
-                <option value="">Sem grupo</option>
-                ${["A", "B"].map(g => `<option value="${g}"${team.group_name === g ? " selected" : ""}>Grupo ${g}</option>`).join("")}
-              </select>
+            <label class="tournament-label">Nome
+              <input class="team-name-input" data-team-id="${team.id}" value="${esc(team.code)}" maxlength="40">
             </label>
             <label class="tournament-label">Limite de atletas
               <select class="max-players-select" data-team-id="${team.id}">
@@ -280,13 +269,12 @@ $("teams").addEventListener("submit", async e => {
 });
 
 $("teams").addEventListener("change", async e => {
-  const isGroup = e.target.classList.contains("group-select");
-  const isMax = e.target.classList.contains("max-players-select");
-  if (!isGroup && !isMax) return;
+  const isName = e.target.classList.contains("team-name-input");
+  if (!isName && !e.target.classList.contains("max-players-select")) return;
   try {
     await api(`/api/teams/${e.target.dataset.teamId}`, {
       method: "PATCH",
-      body: JSON.stringify(isGroup ? { group_name: e.target.value || null } : { max_players: Number(e.target.value) }),
+      body: JSON.stringify(isName ? { code: e.target.value } : { max_players: Number(e.target.value) }),
     });
   } catch (err) {
     toast(err.message);
@@ -324,41 +312,41 @@ function populateTeamSelect(select, teams) {
 }
 
 const STAGE_LABELS = {
+  grupos: "Classificatória",
   semifinal_1: "Semifinal 1",
   semifinal_2: "Semifinal 2",
-  terceiro_lugar: "3º lugar",
   final: "Final",
 };
 
 const STATUS_LABELS = { agendado: "Agendado", em_andamento: "Em andamento", encerrado: "Encerrado" };
-const STAGE_ORDER = { semifinal_1: 1, semifinal_2: 1, terceiro_lugar: 2, final: 3 };
+const STAGE_ORDER = { semifinal_1: 1, semifinal_2: 1, final: 2 };
 
 let lastMatches = [];
-let lastStandings = [];
+let matchesLoaded = false; // the draw panel waits for this so it doesn't flash on a tournament that already has games
+let lastStandings = {};
 let lastTeams = [];
 let lastRendered = "";
 
 async function loadMatches() {
   const matches = await api(`/api/tournaments/${tournamentId}/matches`);
   lastMatches = matches;
+  matchesLoaded = true;
   renderMatches(matches);
   updateKnockoutForms();
+  renderDraw();
 }
 
-function groupLabel(m) {
-  const team = lastTeams.find(t => t.id === m.team_a_id);
-  return team && team.group_name ? `Grupo ${team.group_name}` : "Sem grupo";
-}
+const QUALIFYING_GAMES = 9;
 
 function renderMatches(matches) {
   // The 8s poll re-renders; skip it when nothing changed so an open "Mais"
   // menu or a half-chosen W.O. isn't wiped out from under the organizer.
-  const key = JSON.stringify([matches, lastTeams.map(t => [t.id, t.group_name])]);
+  const key = JSON.stringify(matches);
   if (key === lastRendered) return;
   lastRendered = key;
 
   const next = matches.find(m => m.status !== "encerrado");
-  const groupStage = matches.filter(m => m.stage === "grupos");
+  const qualifying = matches.filter(m => m.stage === "grupos");
   const finalStage = matches
     .filter(m => m.stage !== "grupos")
     .sort((a, b) => STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] || a.scheduled_at.localeCompare(b.scheduled_at));
@@ -373,13 +361,13 @@ function renderMatches(matches) {
     }).join("");
   };
 
-  $("groupMatches").innerHTML = groupStage.length
-    ? fixtures(groupStage)
+  $("qualifyingMatches").innerHTML = qualifying.length
+    ? fixtures(qualifying)
     : '<p class="empty">Nenhum jogo cadastrado. Use “+ Jogo” para adicionar.</p>';
   $("finalMatches").innerHTML = fixtures(finalStage);
 
-  const done = groupStage.filter(m => m.status === "encerrado").length;
-  $("groupProgress").textContent = groupStage.length ? `${done} de ${groupStage.length} jogos encerrados` : "";
+  const done = qualifying.filter(m => m.status === "encerrado").length;
+  $("qualifyingProgress").textContent = qualifying.length ? `${done} de ${qualifying.length} jogos encerrados` : "";
 }
 
 function renderFixture(m, isNext, showDay) {
@@ -389,7 +377,7 @@ function renderFixture(m, isNext, showDay) {
   const decided = m.sets_a != null && m.sets_b != null;
   const winner = decided ? (m.sets_a > m.sets_b ? "a" : "b") : null;
   const teamClass = side => (winner ? (winner === side ? "won" : "lost") : "");
-  const where = m.stage === "grupos" ? groupLabel(m) : STAGE_LABELS[m.stage];
+  const where = STAGE_LABELS[m.stage];
   const status = STATUS_LABELS[m.status] || m.status;
 
   return `
@@ -399,9 +387,9 @@ function renderFixture(m, isNext, showDay) {
         ${showDay ? `<span class="fx-day">${esc(day)}</span>` : ""}
       </div>
       <div class="fx-teams">
-        <span class="fx-team a ${teamClass("a")}">${esc(m.team_a_code)}</span>
+        <span class="fx-team a ${teamClass("a")}">${esc(m.team_a_code)}${mascot(m.team_a_code, "sm")}</span>
         <span class="fx-score">${decided ? `${m.sets_a}–${m.sets_b}` : "×"}</span>
-        <span class="fx-team b ${teamClass("b")}">${esc(m.team_b_code)}</span>
+        <span class="fx-team b ${teamClass("b")}">${mascot(m.team_b_code, "sm")}${esc(m.team_b_code)}</span>
       </div>
       <div class="fx-meta">
         <span class="chip">${esc(where)}</span>
@@ -531,6 +519,7 @@ async function loadStandings() {
   lastStandings = await api(`/api/tournaments/${tournamentId}/standings`);
   renderStandings(lastStandings);
   updateKnockoutForms();
+  renderDraw();
 }
 
 // Both generate buttons stay on screen with a note about what they wait for,
@@ -539,28 +528,27 @@ function updateKnockoutForms() {
   const byStage = stage => lastMatches.find(m => m.stage === stage);
   const semis = [byStage("semifinal_1"), byStage("semifinal_2")];
   const semisExist = semis.some(Boolean);
-  const finalsExist = Boolean(byStage("final") || byStage("terceiro_lugar"));
+  const finalExists = Boolean(byStage("final"));
 
-  const groupsDone = ["A", "B"].every(name => lastStandings.some(g => g.group === name && g.complete));
-  const tied = lastStandings
-    .filter(g => g.group && g.complete && g.rows.filter(r => r.qualified).length < 2)
-    .map(g => g.group);
-  const semisReady = groupsDone && tied.length === 0;
-  const finalsReady = semis.every(m => m && m.status === "encerrado");
+  const rows = lastStandings.rows || [];
+  const tableDone = Boolean(lastStandings.complete);
+  const tied = tableDone && rows.filter(r => r.qualified).length < 4;
+  const semisReady = tableDone && !tied;
+  const finalReady = semis.every(m => m && m.status === "encerrado");
   const when = tournamentDays.length ? ` de ${dayLabel(lastDay())}` : "";
 
   $("generateSemisForm").classList.toggle("hidden", semisExist);
   $("semisBtn").disabled = !semisReady;
   $("semisHint").textContent = semisReady
-    ? `Os dois grupos terminaram. Confirme os horários das semifinais${when}.`
-    : tied.length
-      ? `Empate na classificação do grupo ${tied.join(" e ")}. Faça o sorteio e cadastre as semifinais em “+ Jogo”.`
-      : "Disponível quando os dois grupos terminarem.";
+    ? `A classificatória terminou. Confirme os horários das semifinais (1º × 4º e 2º × 3º)${when}.`
+    : tied
+      ? "Empate na classificação. Faça o sorteio e cadastre as semifinais em “+ Jogo”."
+      : `Disponível quando os ${QUALIFYING_GAMES} jogos da classificatória terminarem.`;
 
-  $("generateFinalsForm").classList.toggle("hidden", finalsExist);
-  $("finalsBtn").disabled = !finalsReady;
-  $("finalsHint").textContent = finalsReady
-    ? `As semifinais terminaram. Confirme os horários do 3º lugar e da final${when}.`
+  $("generateFinalForm").classList.toggle("hidden", finalExists);
+  $("finalBtn").disabled = !finalReady;
+  $("finalHint").textContent = finalReady
+    ? `As semifinais terminaram. Confirme o horário da final${when}.`
     : "Disponível quando as duas semifinais terminarem.";
 }
 
@@ -569,13 +557,12 @@ async function loadPodium() {
   const places = [
     ["1º", "Campeã", podium.champion, "gold"],
     ["2º", "Vice-campeã", podium.runner_up, "silver"],
-    ["3º", "Terceira colocada", podium.third_place, "bronze"],
   ].filter(([, , team]) => team);
   $("podiumSection").classList.toggle("hidden", places.length === 0);
   $("podiumBody").innerHTML = places.map(([n, label, team, tone]) => `
     <li class="place ${tone}">
       <span class="place-n">${n}</span>
-      <span class="place-team">${esc(team)}</span>
+      <span class="place-team">${mascot(team, "sm")}${esc(team)}</span>
       <span class="place-label">${label}</span>
     </li>
   `).join("");
@@ -602,15 +589,14 @@ $("generateSemisForm").addEventListener("submit", async e => {
   }
 });
 
-$("generateFinalsForm").addEventListener("submit", async e => {
+$("generateFinalForm").addEventListener("submit", async e => {
   e.preventDefault();
   const btn = e.target.querySelector("button");
   btn.disabled = true;
   try {
-    await api(`/api/tournaments/${tournamentId}/generate-finals`, {
+    await api(`/api/tournaments/${tournamentId}/generate-final`, {
       method: "POST",
       body: JSON.stringify({
-        third_place_at: `${lastDay()}T${$("thirdAt").value}`,
         final_at: `${lastDay()}T${$("finalAt").value}`,
       }),
     });
@@ -627,19 +613,15 @@ function fmtSigned(n) {
   return n > 0 ? `+${n}` : String(n);
 }
 
-function renderStandings(groups) {
-  $("standingsBody").innerHTML = groups.map(g => {
-    const n = g.rows.length;
-    const totalGames = n * (n - 1) / 2;
-    const playedGames = g.rows.reduce((sum, r) => sum + r.wins + r.losses, 0) / 2;
-    const progress = !g.group
-      ? "Defina o grupo na aba Equipes"
-      : g.complete ? "Grupo encerrado" : `${playedGames} de ${totalGames} jogos`;
+function renderStandings(table) {
+  const rows = table.rows || [];
+  const playedGames = rows.reduce((sum, r) => sum + r.wins + r.losses, 0) / 2;
+  const progress = table.complete ? "Classificatória encerrada" : `${playedGames} de ${QUALIFYING_GAMES} jogos`;
 
-    return `
-      <section class="panel group-table">
+  $("standingsBody").innerHTML = `
+      <section class="panel">
         <div class="stage-head">
-          <h2>${g.group ? `Grupo ${esc(g.group)}` : "Sem grupo"}</h2>
+          <h2>Classificação geral</h2>
           <span class="muted">${progress}</span>
         </div>
         <div class="st-row st-head">
@@ -648,13 +630,16 @@ function renderStandings(groups) {
           <span title="Saldo de sets">SS</span><span title="Saldo de pontos">SP</span>
           <span title="Pontos">Pts</span>
         </div>
-        ${g.rows.map(row => `
+        ${rows.map(row => `
           <div class="st-row${row.qualified ? " qualified" : ""}">
             <span class="st-pos">${playedGames > 0 ? row.rank : "–"}</span>
             <span class="st-team">
-              ${esc(row.team)}
-              ${row.qualified ? '<small class="note ok">Classificada</small>' : ""}
-              ${row.tied ? '<small class="note tie">Empate</small>' : ""}
+              ${mascot(row.team, "sm")}
+              <span>
+                ${esc(row.team)}
+                ${row.qualified ? '<small class="note ok">Classificada</small>' : ""}
+                ${row.tied ? '<small class="note tie">Empate</small>' : ""}
+              </span>
             </span>
             <span>${row.wins + row.losses}</span>
             <span>${row.wins}</span>
@@ -665,8 +650,89 @@ function renderStandings(groups) {
         `).join("")}
       </section>
     `;
-  }).join("");
 }
+
+// Draw: the organizers draw slots A-F, then the nine qualifying games are
+// created from the fixed table. The panel disappears once everyone is in one table.
+const DRAW_SLOTS = ["A", "B", "C", "D", "E", "F"];
+const DRAW_FIXTURES = [
+  ["A", "B"], ["C", "D"], ["E", "F"],
+  ["A", "C"], ["B", "E"], ["D", "F"],
+  ["A", "D"], ["B", "F"], ["C", "E"],
+];
+const DRAW_FIRST_GAME = 13 * 60; // 13:00, then one game every 50 min until told otherwise
+const DRAW_GAME_MINUTES = 50;
+let drawKey = null;
+
+const drawTeam = slot => lastTeams.find(t => String(t.id) === $(`drawSlot${slot}`).value);
+
+function renderDraw() {
+  const show = matchesLoaded && lastTeams.length === DRAW_SLOTS.length && !lastMatches.some(m => m.stage === "grupos");
+  $("drawSection").classList.toggle("hidden", !show);
+  if (!show) { drawKey = null; return; }
+
+  // Rebuild only when teams or days change, so a half-filled draw survives the poll.
+  const key = JSON.stringify([lastTeams.map(t => [t.id, t.code]), tournamentDays]);
+  if (key !== drawKey) {
+    drawKey = key;
+    const options = '<option value="">Escolha a equipe</option>' + lastTeams.map(t => `<option value="${t.id}">${esc(t.code)}</option>`).join("");
+    $("drawSlots").innerHTML = DRAW_SLOTS.map(s => `<label>Posição ${s}<select id="drawSlot${s}" required>${options}</select></label>`).join("");
+    const days = tournamentDays.map(d => `<option value="${d}">${dayLabel(d)}</option>`).join("");
+    $("drawGames").innerHTML = DRAW_FIXTURES.map(([a, b], i) => {
+      const minutes = DRAW_FIRST_GAME + DRAW_GAME_MINUTES * i;
+      const time = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+      return `
+        <div class="draw-game" data-a="${a}" data-b="${b}">
+          <span class="dg-n">Jogo ${i + 1}</span>
+          <span class="dg-teams"></span>
+          <select class="dg-day" aria-label="Dia do jogo ${i + 1}">${days}</select>
+          <input class="dg-time" type="time" value="${time}" aria-label="Horário do jogo ${i + 1}" required>
+        </div>`;
+    }).join("");
+  }
+  updateDrawPreview();
+}
+
+function updateDrawPreview() {
+  const side = slot => {
+    const team = drawTeam(slot);
+    return team ? `${mascot(team.code, "sm")}${esc(team.code)}` : `<span class="dg-open">Posição ${slot}</span>`;
+  };
+  document.querySelectorAll(".draw-game").forEach(row => {
+    row.querySelector(".dg-teams").innerHTML = `<span class="dg-side">${side(row.dataset.a)}</span><span class="dg-x">×</span><span class="dg-side">${side(row.dataset.b)}</span>`;
+  });
+
+  const chosen = DRAW_SLOTS.map(s => $(`drawSlot${s}`).value).filter(Boolean);
+  const repeated = new Set(chosen).size < chosen.length;
+  const ready = chosen.length === DRAW_SLOTS.length && !repeated;
+  $("drawBtn").disabled = !ready;
+  $("drawHint").textContent = repeated
+    ? "Cada equipe só pode aparecer uma vez no sorteio."
+    : !ready
+      ? "Escolha a equipe de cada posição. Os jogos aparecem aqui conforme você escolhe."
+      : "Confira os horários e registre o sorteio.";
+}
+
+$("drawSlots").addEventListener("change", updateDrawPreview);
+
+$("drawForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("drawBtn").disabled = true;
+  try {
+    const slots = Object.fromEntries(DRAW_SLOTS.map(s => [s, Number($(`drawSlot${s}`).value)]));
+    const times = [...document.querySelectorAll(".draw-game")].map(
+      row => `${row.querySelector(".dg-day").value}T${row.querySelector(".dg-time").value}`
+    );
+    await api(`/api/tournaments/${tournamentId}/draw`, { method: "POST", body: JSON.stringify({ slots, times }) });
+    toast("Sorteio registrado");
+    await loadState();
+    await loadMatches();
+    await loadStandings();
+  } catch (err) {
+    toast(err.message);
+    updateDrawPreview();
+  }
+});
 
 setInterval(() => {
   if (!tournamentId) return;

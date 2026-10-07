@@ -1,5 +1,15 @@
 SET_TARGETS = {1: 15, 2: 15, 3: 18}
 
+# One overall table of 6 teams, 3 games each: the draw assigns the teams to
+# slots A-F, and these 9 pairings are played in this order.
+DRAW_SLOTS = ("A", "B", "C", "D", "E", "F")
+DRAW_FIXTURES = (
+    ("A", "B"), ("C", "D"), ("E", "F"),
+    ("A", "C"), ("B", "E"), ("D", "F"),
+    ("A", "D"), ("B", "F"), ("C", "E"),
+)
+QUALIFIED = 4  # the top 4 go to the semifinals
+
 
 def is_set_over(a, b, target):
     return max(a, b) >= target and abs(a - b) >= 2
@@ -107,10 +117,10 @@ def _resolve_ties(standings, head_to_head):
     standings[:] = resolved
 
 
-def mark_qualified(standings, slots=2):
+def mark_qualified(standings, slots):
     """Flag the top `slots` rows as qualified, unless the last slot is tied
     with the first team left out - picking one of them would be arbitrary.
-    Call only once the group is complete: with games still to play the order
+    Call only once the table is complete: with games still to play the order
     isn't final."""
     for s in standings:
         s["qualified"] = False

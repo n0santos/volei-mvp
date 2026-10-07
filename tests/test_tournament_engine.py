@@ -238,7 +238,7 @@ def test_qualification_cut_follows_head_to_head():
     # place (W, X) is clean and Y is out - without head-to-head it would be
     # a tie at the cut and nobody would qualify.
     standings = compute_standings(level_pair_scenario())
-    mark_qualified(standings)
+    mark_qualified(standings, slots=2)
     assert {s["team"]: s["qualified"] for s in standings} == {"W": True, "X": True, "Y": False, "Z": False}
 
 
@@ -250,7 +250,7 @@ def test_qualification_cut_is_blocked_by_an_unresolved_tie():
         m("Y", "Z", [(15, 10), (15, 10)]),
     ]  # X and Y: same record, never met
     standings = compute_standings(matches)
-    mark_qualified(standings)
+    mark_qualified(standings, slots=2)
     assert not any(s["qualified"] for s in standings)
 
 

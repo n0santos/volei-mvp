@@ -352,3 +352,31 @@ def test_cannot_lower_the_limit_while_the_team_has_two_reserves():
         update_team(team.id, TeamUpdate(max_players=7), db)
     assert exc_info.value.status_code == 409
 
+
+
+def test_update_team_renames_it_and_trims_the_name():
+    db = make_db()
+    t = create_tournament(
+        TournamentCreate(name="Torneio", start_date=date(2026, 11, 28), end_date=date(2026, 11, 29)), db
+    )
+    team = create_team(t.id, TeamCreate(code="Equipe Vermelha"), db)
+
+    update_team(team.id, TeamUpdate(code="  Equipe Vermelha "), db)
+
+    assert team.code == "Equipe Vermelha"
+
+
+def test_update_team_rejects_an_empty_name():
+    import pytest
+    from fastapi import HTTPException
+
+    db = make_db()
+    t = create_tournament(
+        TournamentCreate(name="Torneio", start_date=date(2026, 11, 28), end_date=date(2026, 11, 29)), db
+    )
+    team = create_team(t.id, TeamCreate(code="A"), db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        update_team(team.id, TeamUpdate(code="   "), db)
+    assert exc_info.value.status_code == 400
+    assert team.code == "A"

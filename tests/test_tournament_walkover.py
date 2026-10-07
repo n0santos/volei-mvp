@@ -9,12 +9,13 @@ from app import database
 from app.database import Base
 from app.models import Tournament, Team, TournamentSetResult
 from app.schemas import (
-    TournamentMatchCreate, SetPointRequest, WalkoverRequest, GenerateSemifinalsRequest,
+    TournamentMatchCreate, SetPointRequest, WalkoverRequest, GenerateSemifinalsRequest, DrawRequest,
 )
 from app.tournament_matches import (
     create_match, get_scoreboard, add_point, get_standings,
-    set_walkover, undo_walkover, generate_semifinals,
+    set_walkover, undo_walkover, generate_semifinals, register_draw,
 )
+from test_tournament_knockout import FOUR_QUALIFY, TIMES
 
 WHEN = datetime(2026, 11, 28, 13, 0)
 
@@ -25,13 +26,13 @@ def make_db():
     return sessionmaker(bind=engine)()
 
 
-def make_teams(db, codes=("A1", "A2", "A3", "B1", "B2", "B3")):
+def make_teams(db, codes=("T1", "T2", "T3", "T4", "T5", "T6")):
     t = Tournament(name="Torneio", start_date=date(2026, 11, 28), end_date=date(2026, 11, 29))
     db.add(t)
     db.flush()
     teams = {}
     for code in codes:
-        teams[code] = Team(tournament_id=t.id, code=code, group_name=code[0])
+        teams[code] = Team(tournament_id=t.id, code=code)
         db.add(teams[code])
     db.commit()
     return t, teams
@@ -53,7 +54,7 @@ def sets_of(db, match):
 def test_walkover_records_two_closed_15_0_sets_for_the_team_that_showed_up():
     db = make_db()
     t, teams = make_teams(db)
-    m = new_match(db, t, teams["A1"], teams["A2"])
+    m = new_match(db, t, teams["T1"], teams["T2"])
 
     set_walkover(t.id, m.id, WalkoverRequest(present="a"), db)
 
@@ -68,7 +69,7 @@ def test_walkover_records_two_closed_15_0_sets_for_the_team_that_showed_up():
 def test_walkover_when_team_b_shows_up():
     db = make_db()
     t, teams = make_teams(db)
-    m = new_match(db, t, teams["A1"], teams["A2"])
+    m = new_match(db, t, teams["T1"], teams["T2"])
 
     set_walkover(t.id, m.id, WalkoverRequest(present="b"), db)
 
@@ -79,20 +80,19 @@ def test_walkover_when_team_b_shows_up():
 def test_walkover_counts_like_a_2_0_in_the_standings():
     db = make_db()
     t, teams = make_teams(db)
-    m = new_match(db, t, teams["A1"], teams["A2"])
+    m = new_match(db, t, teams["T1"], teams["T2"])
     set_walkover(t.id, m.id, WalkoverRequest(present="a"), db)
 
-    group_a = next(g for g in get_standings(t.id, db) if g["group"] == "A")
-    rows = {r["team"]: r for r in group_a["rows"]}
+    rows = {r["team"]: r for r in get_standings(t.id, db)["rows"]}
 
-    assert (rows["A1"]["tournament_points"], rows["A1"]["wins"], rows["A1"]["sets_balance"], rows["A1"]["points_balance"]) == (3, 1, 2, 30)
-    assert (rows["A2"]["tournament_points"], rows["A2"]["losses"], rows["A2"]["sets_balance"], rows["A2"]["points_balance"]) == (0, 1, -2, -30)
+    assert (rows["T1"]["tournament_points"], rows["T1"]["wins"], rows["T1"]["sets_balance"], rows["T1"]["points_balance"]) == (3, 1, 2, 30)
+    assert (rows["T2"]["tournament_points"], rows["T2"]["losses"], rows["T2"]["sets_balance"], rows["T2"]["points_balance"]) == (0, 1, -2, -30)
 
 
 def test_walkover_rejects_an_unknown_side():
     db = make_db()
     t, teams = make_teams(db)
-    m = new_match(db, t, teams["A1"], teams["A2"])
+    m = new_match(db, t, teams["T1"], teams["T2"])
 
     with pytest.raises(HTTPException) as exc_info:
         set_walkover(t.id, m.id, WalkoverRequest(present="x"), db)
@@ -102,7 +102,7 @@ def test_walkover_rejects_an_unknown_side():
 def test_walkover_rejects_a_match_that_already_has_a_score():
     db = make_db()
     t, teams = make_teams(db)
-    m = new_match(db, t, teams["A1"], teams["A2"])
+    m = new_match(db, t, teams["T1"], teams["T2"])
     add_point(t.id, m.id, SetPointRequest(team="a", delta=1), db)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -113,7 +113,7 @@ def test_walkover_rejects_a_match_that_already_has_a_score():
 def test_walkover_cannot_be_applied_twice():
     db = make_db()
     t, teams = make_teams(db)
-    m = new_match(db, t, teams["A1"], teams["A2"])
+    m = new_match(db, t, teams["T1"], teams["T2"])
     set_walkover(t.id, m.id, WalkoverRequest(present="a"), db)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -124,7 +124,7 @@ def test_walkover_cannot_be_applied_twice():
 def test_undo_walkover_reopens_the_match():
     db = make_db()
     t, teams = make_teams(db)
-    m = new_match(db, t, teams["A1"], teams["A2"])
+    m = new_match(db, t, teams["T1"], teams["T2"])
     set_walkover(t.id, m.id, WalkoverRequest(present="a"), db)
 
     undo_walkover(t.id, m.id, db)
@@ -137,42 +137,35 @@ def test_undo_walkover_reopens_the_match():
 def test_undo_walkover_rejects_a_match_that_was_not_a_walkover():
     db = make_db()
     t, teams = make_teams(db)
-    m = new_match(db, t, teams["A1"], teams["A2"])
+    m = new_match(db, t, teams["T1"], teams["T2"])
 
     with pytest.raises(HTTPException) as exc_info:
         undo_walkover(t.id, m.id, db)
     assert exc_info.value.status_code == 409
 
 
-def play_group_by_walkover(db, t, teams, prefix):
-    x1, x2, x3 = (teams[f"{prefix}{i}"] for i in (1, 2, 3))
-    for a, b in [(x1, x2), (x1, x3), (x2, x3)]:
-        m = new_match(db, t, a, b)
-        set_walkover(t.id, m.id, WalkoverRequest(present="a"), db)
-
-
 def test_walkovers_feed_the_semifinals_and_then_cannot_be_undone():
     db = make_db()
     t, teams = make_teams(db)
-    play_group_by_walkover(db, t, teams, "A")
-    play_group_by_walkover(db, t, teams, "B")
+    slots = dict(zip("ABCDEF", (team.id for team in teams.values())))
+    games = register_draw(t.id, DrawRequest(slots=slots, times=TIMES), db)
+    for m, side in zip(games, FOUR_QUALIFY):  # clean cut between 4th and 5th
+        set_walkover(t.id, m.id, WalkoverRequest(present=side.lower()), db)
     when = GenerateSemifinalsRequest(semifinal_1_at=WHEN, semifinal_2_at=WHEN)
 
     sf1, sf2 = generate_semifinals(t.id, when, db)
 
-    assert (sf1.team_a_id, sf1.team_b_id) == (teams["A1"].id, teams["B2"].id)
-    group_match = next(
-        m for m in db.query(type(sf1)).filter_by(stage="grupos") if m.walkover
-    )
+    order = [row["team"] for row in get_standings(t.id, db)["rows"]]
+    assert (sf1.team_a_id, sf1.team_b_id) == (teams[order[0]].id, teams[order[3]].id)
     with pytest.raises(HTTPException) as exc_info:
-        undo_walkover(t.id, group_match.id, db)
+        undo_walkover(t.id, games[0].id, db)
     assert exc_info.value.status_code == 409
 
 
 def test_a_knockout_walkover_can_be_undone_while_nothing_follows_it():
     db = make_db()
     t, teams = make_teams(db)
-    m = new_match(db, t, teams["A1"], teams["B2"], stage="semifinal_1")
+    m = new_match(db, t, teams["T1"], teams["T5"], stage="semifinal_1")
     set_walkover(t.id, m.id, WalkoverRequest(present="a"), db)
 
     undo_walkover(t.id, m.id, db)

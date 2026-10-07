@@ -8,8 +8,6 @@ from .schemas import TournamentCreate, TeamCreate, TeamUpdate, TeamPlayerAdd, Te
 
 router = APIRouter()
 
-GROUPS = ("A", "B")
-
 # Regulation: up to 7 athletes per team (6 starters + reserves). The
 # organization can allow 8 for a single team via Team.max_players.
 ALLOWED_MAX_PLAYERS = (7, 8)
@@ -80,11 +78,11 @@ def update_team(team_id: int, data: TeamUpdate, db: DBSession = Depends(get_db))
     if not team:
         raise HTTPException(404, "Time não encontrado")
 
-    # Explicit null clears the group, so tell "sent null" from "not sent".
-    if "group_name" in data.model_fields_set:
-        if data.group_name is not None and data.group_name not in GROUPS:
-            raise HTTPException(400, "Grupo precisa ser A ou B")
-        team.group_name = data.group_name
+    if data.code is not None:
+        code = data.code.strip()
+        if not code:
+            raise HTTPException(400, "O nome da equipe não pode ficar vazio")
+        team.code = code
 
     if data.max_players is not None:
         if data.max_players not in ALLOWED_MAX_PLAYERS:
@@ -116,7 +114,6 @@ def tournament_state(tournament_id: int, db: DBSession = Depends(get_db)):
         teams_data.append({
             "id": team.id,
             "code": team.code,
-            "group_name": team.group_name,
             "max_players": team.max_players,
             "players": [
                 {

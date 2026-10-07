@@ -12,6 +12,25 @@ BLOCK_AFTER = 2
 # below the weight of a match spent waiting, so it orders equals without ever
 # outranking them.
 SHARE_WEIGHT = 300
+# Cost per score point of average gap between the two sides, only used when the
+# caller passes `balance` ("against a team" nights). Kept small on purpose: a gap
+# of 10 points costs 15, less than the 37 that one match of difference in share
+# costs on an 8-match night, so it reorders people whose turns are equal but
+# never outranks waiting or the rest rule.
+BALANCE_WEIGHT = 1.5
+# Average gap (score points) below which two sides count as balanced enough and
+# the usual draw decides who plays. Without it the single best-balanced squad
+# wins every time and the same people always get the shorter end of the rotation
+# (measured: with 13 present, three people played one match fewer on every
+# simulated night). At 3 the spread of matches per person matches the draw
+# without balancing, and the gap between the sides still halves.
+BALANCE_TOLERANCE = 3.0
+# ...and whatever is within this many points of the best squad on offer counts as
+# balanced too. The group put matches played first: at 8 the spread of matches per
+# person is the same as the plain draw's with 10, 13 and 17 present (simulated),
+# and balance only rules out the worst mismatches (worst gap 13 -> 9 points with
+# 13 present). A smaller margin balances better but starts favoring who plays more.
+BALANCE_MARGIN = 8.0
 
 
 def eligible_players(db: DBSession, session_id: int):
@@ -49,7 +68,9 @@ def without_players_needing_a_rest(available, hist, n, raffle):
     return playing + called_back
 
 
-def select_players(db: DBSession, session_id: int, target: int = 12):
+def select_players(db: DBSession, session_id: int, target: int = 12, balance=None):
+    """`balance`, if given, maps a candidate squad (list of players) to a score
+    gap; among squads with equal fairness the smaller gap wins."""
     available = eligible_players(db, session_id)
     if not available:
         return []
@@ -110,6 +131,14 @@ def select_players(db: DBSession, session_id: int, target: int = 12):
     best = None
     best_cost = float("inf")
 
+    # The opening squad stays decided by arrival order, as the group agreed.
+    gaps = {}
+    if balance is not None and not is_first_match:
+        for combo in combinations(pool, n):
+            if forced_ids.issubset({p.id for _, p in combo}):
+                gaps[tuple(p.id for _, p in combo)] = balance([p for _, p in combo])
+    free_gap = max(BALANCE_TOLERANCE, min(gaps.values()) + BALANCE_MARGIN) if gaps else 0.0
+
     for combo in combinations(pool, n):
         ids = {p.id for _, p in combo}
         if not forced_ids.issubset(ids):
@@ -123,6 +152,8 @@ def select_players(db: DBSession, session_id: int, target: int = 12):
             cost -= h["outside_streak"] * 1000
             cost += h["share"] * SHARE_WEIGHT
             cost += tiebreak(a, p)
+        if gaps:
+            cost += BALANCE_WEIGHT * max(0.0, gaps[tuple(p.id for _, p in combo)] - free_gap)
 
         if cost < best_cost:
             best_cost = cost

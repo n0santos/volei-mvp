@@ -21,8 +21,9 @@ class Base(DeclarativeBase):
 # create_all() never alters a table that already exists, so a column added
 # after launch has to be ALTERed into existing DBs here: (table, column) -> type.
 MISSING_COLUMNS = {
-    ("teams", "group_name"): "VARCHAR(1)",
     ("teams", "max_players"): "INTEGER NOT NULL DEFAULT 7",
+    ("sessions", "opponents"): "TEXT",
+    ("matches", "opponent"): "VARCHAR(120)",
     ("tournament_matches", "stage"): "VARCHAR(20) NOT NULL DEFAULT 'grupos'",
     ("tournament_matches", "walkover"): "BOOLEAN NOT NULL DEFAULT 0",
 }

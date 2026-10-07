@@ -16,6 +16,7 @@
     <div>
       <h1>🏐 Vôlei</h1>
       <div id="sessionName" class="muted">Nenhuma sessão</div>
+      <div id="modeBadge" class="mode-badge hidden"></div>
     </div>
     <div class="actions">
       <button id="togglePlayers">⚙ Jogadores</button>
@@ -23,6 +24,30 @@
     </div>
   </div>
 </header>
+<dialog id="newSessionDialog">
+  <form id="newSessionForm">
+    <h2>Nova sessão</h2>
+    <p id="newSessionWarning" class="session-warning hidden"></p>
+    <label>Nome <input id="newSessionName" required></label>
+    <fieldset>
+      <legend>Modo</legend>
+      <label class="choice"><input type="radio" name="sessionMode" value="normal" checked>
+        <span><strong>6×6</strong><br><span class="muted">Dois times sorteados e equilibrados entre os presentes.</span></span></label>
+      <label class="choice"><input type="radio" name="sessionMode" value="versus">
+        <span><strong>Contra equipe</strong><br><span class="muted">O app sorteia 6 por partida contra equipes fixas, que se alternam.</span></span></label>
+    </fieldset>
+    <fieldset id="versusTeams" class="hidden">
+      <legend>Equipes adversárias</legend>
+      <div id="versusTeamList"></div>
+      <p class="muted">Na ordem em que aparecem: a primeira partida é contra a primeira marcada, mas dá para trocar na hora.</p>
+    </fieldset>
+    <p class="muted">Entram na lista todos os jogadores cadastrados; marque a chegada de quem vier.</p>
+    <div class="actions">
+      <button type="button" id="newSessionCancel">Cancelar</button>
+      <button class="primary" id="newSessionCreate">Criar sessão</button>
+    </div>
+  </form>
+</dialog>
 <div class="app">
   <main>
     <section id="setup" class="panel">
@@ -51,6 +76,19 @@
           <button id="generate" class="primary">Gerar próxima partida</button>
         </div>
       </div>
+      <div id="versus" class="versus hidden">
+        <div class="versus-options" role="radiogroup" aria-label="Contra qual equipe"></div>
+        <label class="versus-missing">Faltam na equipe
+          <select id="missing">
+            <option value="0">Equipe completa</option>
+            <option value="1">1 pessoa</option>
+            <option value="2">2 pessoas</option>
+            <option value="3">3 pessoas</option>
+            <option value="4">4 pessoas</option>
+            <option value="5">5 pessoas</option>
+          </select>
+        </label>
+      </div>
       <input id="attendanceSearch" class="search-box" type="search" placeholder="Buscar jogador...">
       <div id="attendance" class="player-grid"></div>
     </section>
@@ -74,6 +112,8 @@
 
   <div id="toast"></div>
 </div>
+<script src="/static/mascotes/lista.js"></script>
+<script src="/static/mascotes.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

@@ -21,6 +21,9 @@ class Session(Base):
     name: Mapped[str] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # "Against a team" night: JSON list of opponent names. Each match then drafts
+    # one side of 6 from the arrivals and the opponent alternates down this list.
+    opponents: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Attendance(Base):
@@ -45,6 +48,7 @@ class Match(Base):
     session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"))
     number: Mapped[int]
     status: Mapped[str] = mapped_column(String(20), default="proposed")
+    opponent: Mapped[str | None] = mapped_column(String(120), nullable=True)  # set in "against a team" sessions
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -91,7 +95,6 @@ class Team(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"))
     code: Mapped[str] = mapped_column(String(20))
-    group_name: Mapped[str | None] = mapped_column(String(1), nullable=True)  # "A"/"B", set by hand after the draw
     # Regulation: 7. The organization can raise it for a single team (e.g. an athlete only available one day).
     max_players: Mapped[int] = mapped_column(Integer, default=7, server_default="7")
 
