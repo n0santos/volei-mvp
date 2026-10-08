@@ -1,4 +1,4 @@
-SET_TARGETS = {1: 15, 2: 15, 3: 18}
+SET_TARGETS = {1: 21, 2: 21, 3: 18}
 
 # One overall table of 6 teams, 3 games each: the draw assigns the teams to
 # slots A-F, and these 9 pairings are played in this order.
