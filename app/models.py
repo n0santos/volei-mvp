@@ -49,6 +49,7 @@ class Match(Base):
     number: Mapped[int]
     status: Mapped[str] = mapped_column(String(20), default="proposed")
     opponent: Mapped[str | None] = mapped_column(String(120), nullable=True)  # set in "against a team" sessions
+    winner: Mapped[str | None] = mapped_column(String(1), nullable=True)  # "A" / "B", unset when nobody tapped
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

@@ -279,7 +279,10 @@ function renderMatch() {
   }).join("") + opponentCard;
 
   $("startMatch").classList.toggle("hidden", m.status !== "proposed");
-  $("finishMatch").classList.toggle("hidden", m.status !== "running");
+  document.querySelectorAll(".finishMatch").forEach(b => b.classList.toggle("hidden", m.status !== "running"));
+  // Against a team, side A is our drafted team and B is the opponent.
+  $("finishA").textContent = m.opponent ? "🏆 Time sorteado venceu" : "🏆 Time A venceu";
+  $("finishB").textContent = m.opponent ? `🏆 ${m.opponent} venceu` : "🏆 Time B venceu";
   $("substitution").classList.add("hidden");
 }
 
@@ -460,16 +463,18 @@ $("startMatch").onclick = () => {
   });
 };
 
-$("finishMatch").onclick = async () => {
+document.querySelectorAll(".finishMatch").forEach(btn => btn.onclick = async () => {
   const m = state.current_match;
   if (!m) return;
-  if (!confirm("Encerrar a partida?")) return;
-  busy([$("finishMatch")], "Encerrando…", async () => {
-    await api(`/api/matches/${m.id}/finish`, {method:"POST"});
+  const winner = btn.dataset.winner || null;
+  const label = !winner ? "sem vencedor" : `com vitória de: ${btn.textContent.replace("🏆 ", "").replace(" venceu", "")}`;
+  if (!confirm(`Encerrar a partida ${label}?`)) return;
+  busy([btn], "Encerrando…", async () => {
+    await api(`/api/matches/${m.id}/finish`, {method:"POST", body:JSON.stringify({winner})});
     await refresh();
     toast(`Partida ${m.number} encerrada`);
   });
-};
+});
 
 $("resetMatch").onclick = async () => {
   if (!confirm("Apagar a partida proposta/em andamento e gerar novamente?")) return;

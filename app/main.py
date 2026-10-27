@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from .database import Base, engine, get_db, SessionLocal, add_missing_columns
 from .models import Player, Session as GameSession, Attendance, Match, MatchPlayer, Event
-from .schemas import PlayerCreate, SessionCreate, GenerateRequest, AttendanceUpdate, SubstituteRequest, SwapRequest
+from .schemas import PlayerCreate, SessionCreate, GenerateRequest, AttendanceUpdate, SubstituteRequest, SwapRequest, FinishRequest
 from .services.selection import select_players, eligible_players, BLOCK_AFTER, SHARE_WEIGHT
 from .services.versus import opponent_average, best_split, side_gap
 from .services.teams import balance_teams, effective_score
@@ -638,19 +638,21 @@ async def swap_player(match_id: int, data: SwapRequest, db: DBSession = Depends(
 
 
 @app.post("/api/matches/{match_id}/finish")
-async def finish_match(match_id: int, db: DBSession = Depends(get_db)):
+async def finish_match(match_id: int, db: DBSession = Depends(get_db), data: FinishRequest | None = None):
     m = db.get(Match, match_id)
     if not m:
         raise HTTPException(404, "Partida não encontrada")
     now = datetime.utcnow()
     m.status = "finished"
     m.ended_at = now
+    if data and data.winner:
+        m.winner = data.winner
 
     for mp in db.execute(select(MatchPlayer).where(MatchPlayer.match_id == m.id)).scalars():
         if mp.entered_at and mp.exited_at is None:
             mp.exited_at = now
 
-    event(db, m.session_id, "match_finished", match_id=m.id)
+    event(db, m.session_id, "match_finished", match_id=m.id, payload={"winner": m.winner})
     db.commit()
     await broadcast(m.session_id)
     return {"ok": True}

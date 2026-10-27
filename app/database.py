@@ -24,6 +24,7 @@ MISSING_COLUMNS = {
     ("teams", "max_players"): "INTEGER NOT NULL DEFAULT 7",
     ("sessions", "opponents"): "TEXT",
     ("matches", "opponent"): "VARCHAR(120)",
+    ("matches", "winner"): "VARCHAR(1)",
     ("tournament_matches", "stage"): "VARCHAR(20) NOT NULL DEFAULT 'grupos'",
     ("tournament_matches", "walkover"): "BOOLEAN NOT NULL DEFAULT 0",
 }

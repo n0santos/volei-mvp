@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -28,6 +29,11 @@ class AttendanceUpdate(BaseModel):
 
 class SubstituteRequest(BaseModel):
     player_id: int
+
+
+class FinishRequest(BaseModel):
+    # Optional: forgetting to tap just leaves the match without a winner.
+    winner: Literal["A", "B"] | None = None
 
 
 class SwapRequest(BaseModel):
