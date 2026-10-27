@@ -17,7 +17,7 @@ O app **não funciona sem um cadastro prévio**. Para cada pessoa do grupo você
 Sobre o score:
 
 - Ele **só serve para equilibrar os times**. Nunca decide quem joga — isso é só pelo rodízio.
-- Compare homens com homens e mulheres com mulheres. Internamente os homens recebem +10 na hora de montar os times (`MALE_ADJUSTMENT` em `app/services/teams.py`), calibrado a partir de "um homem 80 joga como uma mulher 90". Ajuste para o seu grupo.
+- Compare homens com homens e mulheres com mulheres. Internamente os homens recebem +5 na hora de montar os times (`MALE_ADJUSTMENT` em `app/services/teams.py`), calibrado a partir de equivalências entre jogadoras e jogadores apontadas pelo próprio grupo. Ajuste para o seu grupo.
 - Não precisa ser preciso. Chute (70 para intermediário) e corrija depois de ver a pessoa jogar.
 
 Dá para cadastrar pela tela (**⚙ Jogadores**) ou pela API:

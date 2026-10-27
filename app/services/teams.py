@@ -3,9 +3,11 @@ from itertools import combinations
 
 # Scores are assigned comparing players within their own gender group, not on
 # one shared scale - a men's 80 and a women's 80 aren't the same level.
-# Calibrated against the group: a men's 80 plays like a women's 90, so add
-# this back only when comparing skill across genders for team balance.
-MALE_ADJUSTMENT = 10
+# Calibrated against the group: a men's 80 first looked like a women's 90 (+10),
+# but a 2026-10-27 poll of 35 players, using ~14 woman-vs-man equivalences, put
+# it nearer +5 (median +5, mean ~+1). Add this back only when comparing skill
+# across genders for team balance.
+MALE_ADJUSTMENT = 5
 
 # How much worse than the best possible split a split may be and still be drawn
 # from. Dozens of splits usually tie for practically the same balance, and

@@ -63,9 +63,9 @@ def play(db, sid, **request):
 
 def test_opponent_average_uses_the_whole_roster_with_the_mens_offset():
     db = make_db()
-    add_team(db, "Equipe Azul", [60, 70, 80], gender="M")  # +10 each
+    add_team(db, "Equipe Azul", [60, 70, 80], gender="M")  # +5 each
 
-    assert opponent_average(db, "Equipe Azul") == 80
+    assert opponent_average(db, "Equipe Azul") == 75
     assert opponent_average(db, "Ninguém") is None
 
 
