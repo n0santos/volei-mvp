@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, delete, func
 from sqlalchemy.orm import Session as DBSession
@@ -17,6 +17,7 @@ from .services.selection import select_players, eligible_players, BLOCK_AFTER, S
 from .services.versus import opponent_average, best_split, side_gap
 from .services.teams import balance_teams, effective_score
 from .services.fairness import history
+from .services.export import history_rows, history_csv
 from .tournament import router as tournament_router
 from .tournament_matches import router as tournament_matches_router
 
@@ -161,6 +162,17 @@ def active_session(db: DBSession = Depends(get_db)):
         select(GameSession).where(GameSession.active == True).order_by(GameSession.id.desc())
     ).scalar_one_or_none()
     return {"id": s.id, "name": s.name} if s else None
+
+
+@app.get("/api/sessions/{session_id}/history.csv")
+def session_history(session_id: int, db: DBSession = Depends(get_db)):
+    s = get_session(db, session_id)
+    rows = history_rows(db, s.name, session_id)
+    return Response(
+        history_csv(rows),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="historico-sessao-{session_id}.csv"'},
+    )
 
 
 @app.get("/api/sessions/{session_id}")
