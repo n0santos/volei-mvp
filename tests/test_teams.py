@@ -68,3 +68,35 @@ def test_mixing_keeps_the_teams_balanced():
         a, b, diff = balance_teams(jogadores)
         assert len(a) == len(b) == 6
         assert diff <= 25, f"times ficaram desequilibrados: diferença {diff}"
+
+
+# --- tournament-team affinity ---
+
+def _side(team, groups):
+    return {groups.get(x.id) for x in team}
+
+
+def test_tournament_teammates_stay_together_when_balance_allows():
+    players = [p(f"p{i}", 70) for i in range(12)]
+    groups = {pl.id: ("azul" if i < 6 else "verde") for i, pl in enumerate(players)}
+    for _ in range(20):
+        a, b, diff = balance_teams(players, groups)
+        assert len(_side(a, groups)) == 1 and len(_side(b, groups)) == 1
+        assert diff == 0
+
+
+def test_players_without_tournament_team_are_neutral():
+    players = [p(f"p{i}", 70) for i in range(12)]
+    a, b, diff = balance_teams(players, {})
+    assert len(a) == 6 and len(b) == 6 and diff == 0
+
+
+def test_affinity_never_makes_teams_badly_unbalanced():
+    # Azul is all strong, Verde all weak: keeping both together would be a
+    # 100-point gap. Affinity must give way to balance.
+    strong = [p(f"s{i}", 95) for i in range(6)]
+    weak = [p(f"w{i}", 45) for i in range(6)]
+    groups = {pl.id: "azul" for pl in strong} | {pl.id: "verde" for pl in weak}
+    for _ in range(20):
+        a, b, diff = balance_teams(strong + weak, groups)
+        assert diff <= 20

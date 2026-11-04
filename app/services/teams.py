@@ -15,6 +15,14 @@ MALE_ADJUSTMENT = 5
 # single match of the night.
 MIX_TOLERANCE = 10
 
+# Tournament affinity: players who share a tournament team prefer the same side.
+# Each teammate pair split across sides costs this much - above the gender
+# penalty (8), so affinity usually wins. AFFINITY_MAX_DIFF is the guard rail:
+# splits whose score gap exceeds it are dropped (unless nothing is closer), so
+# keeping a tournament team together never produces a lopsided match.
+AFFINITY_WEIGHT = 10
+AFFINITY_MAX_DIFF = 20
+
 
 def effective_score(p):
     return p.score + (MALE_ADJUSTMENT if p.gender == "M" else 0)
@@ -43,11 +51,18 @@ def _split_cost(a, b):
     return cost
 
 
-def _best_full_split(players):
+def affinity_penalty(a, b, groups):
+    # Teammate pairs (same tournament team) that end up on opposite sides.
+    split = 0
+    for g in {groups.get(p.id) for p in a} - {None}:
+        split += sum(1 for p in a if groups.get(p.id) == g) * sum(1 for p in b if groups.get(p.id) == g)
+    return split * AFFINITY_WEIGHT
+
+
+def _best_full_split(players, groups):
     a_size = len(players) // 2
 
     splits = []
-    best_cost = float("inf")
 
     for idxs in combinations(range(len(players)), a_size):
         idxs = set(idxs)
@@ -59,18 +74,25 @@ def _best_full_split(players):
             continue
 
         cost = _split_cost(a, b)
+        if groups:
+            cost += affinity_penalty(a, b, groups)
         splits.append((cost, a, b))
-        if cost < best_cost:
-            best_cost = cost
+
+    if groups:
+        gap = lambda s: abs(team_score(s[1]) - team_score(s[2]))
+        limit = max(AFFINITY_MAX_DIFF, min(gap(s) for s in splits))
+        splits = [s for s in splits if gap(s) <= limit]
+    best_cost = min(s[0] for s in splits)
 
     close_enough = [s for s in splits if s[0] <= best_cost + MIX_TOLERANCE]
     cost, a, b = random.choice(close_enough)
     return a, b, cost
 
 
-def balance_teams(players):
+def balance_teams(players, groups=None):
+    # groups: optional {player_id: tournament team id}; see AFFINITY_* above.
     if len(players) < 2:
         return players, [], 0.0
 
-    a, b, _cost = _best_full_split(players)
+    a, b, _cost = _best_full_split(players, groups or {})
     return a, b, abs(team_score(a) - team_score(b))

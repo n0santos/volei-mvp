@@ -11,7 +11,7 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.orm import Session as DBSession
 
 from .database import Base, engine, get_db, SessionLocal, add_missing_columns
-from .models import Player, Session as GameSession, Attendance, Match, MatchPlayer, Event
+from .models import Player, Session as GameSession, Attendance, Match, MatchPlayer, Event, Tournament, Team, TeamPlayer
 from .schemas import PlayerCreate, SessionCreate, GenerateRequest, AttendanceUpdate, SubstituteRequest, SwapRequest, FinishRequest
 from .services.selection import select_players, eligible_players, BLOCK_AFTER, SHARE_WEIGHT
 from .services.versus import opponent_average, best_split, side_gap
@@ -399,7 +399,7 @@ async def generate_match(session_id: int, db: DBSession = Depends(get_db), data:
         await broadcast(session_id)
         return {"match_id": m.id}
 
-    a, b, diff = balance_teams(chosen)
+    a, b, diff = balance_teams(chosen, tournament_groups(db))
 
     m = Match(session_id=session_id, number=number, status="proposed")
     db.add(m)
@@ -418,6 +418,17 @@ async def generate_match(session_id: int, db: DBSession = Depends(get_db), data:
     db.commit()
     await broadcast(session_id)
     return {"match_id": m.id}
+
+
+def tournament_groups(db):
+    """{player_id: team id} for the active tournament; {} when there is none."""
+    rows = db.execute(
+        select(TeamPlayer.player_id, TeamPlayer.team_id)
+        .join(Team, Team.id == TeamPlayer.team_id)
+        .join(Tournament, Tournament.id == Team.tournament_id)
+        .where(Tournament.active == True)
+    ).all()
+    return {pid: tid for pid, tid in rows}
 
 
 @app.post("/api/matches/{match_id}/start")
