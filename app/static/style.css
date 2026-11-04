@@ -593,3 +593,18 @@ body.torneio {
 @media (prefers-reduced-motion: no-preference) {
   .torneio .tabs button { transition: background-color .15s; }
 }
+
+#addOutsideDialog { border: 0; border-radius: 12px; padding: 0; width: min(480px, calc(100vw - 32px)); box-shadow: 0 12px 40px rgba(0,0,0,.3); }
+#addOutsideDialog::backdrop { background: rgba(10, 20, 35, .55); }
+#addOutsideForm { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+#addOutsideForm h2 { margin: 0; }
+#addOutsideForm label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #5b6b7a; }
+#addOutsideForm fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 0; }
+#addOutsideForm .actions { justify-content: flex-end; }
+.outside-results { display: flex; flex-direction: column; gap: 6px; max-height: 45vh; overflow-y: auto; }
+.outside-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 12px; min-height: 44px; border: 1px solid var(--border); border-radius: 10px;
+  background: white; text-align: left; cursor: pointer;
+}
+.outside-row:disabled { opacity: .5; cursor: default; }

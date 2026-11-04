@@ -429,19 +429,79 @@ $("playerForm").onsubmit = async e => {
   } catch(e) { toast(e.message); }
 };
 
+// "+ Pessoa fora da lista": search the registered players instead of typing
+// the exact name into a prompt - a typo there used to create a duplicate
+// player with a made-up score.
+let outsidePlayers = [];
+
+function outsideMatches(term) {
+  const tokens = normalize(term).split(/\s+/).filter(Boolean);
+  const inSession = new Map(state.players.map(p => [p.id, p]));
+  const has = (p, t) => normalize(p.name).includes(t);
+  let found = outsidePlayers.filter(p => tokens.every(t => has(p, t)));
+  // An old full name ("Thiago Borges") matches nobody as a whole; fall back to
+  // any word so the short registered name still shows up.
+  if (!found.length && tokens.length > 1) found = outsidePlayers.filter(p => tokens.some(t => t.length >= 3 && has(p, t)));
+  // Names starting with the term first ("ana" before "Damiana"), and players
+  // not yet in the session before those already listed.
+  const starts = p => tokens.length && normalize(p.name).startsWith(tokens[0]) ? 0 : 1;
+  return found
+    .map(p => ({...p, inSession: inSession.get(p.id)}))
+    .sort((a, b) => (!!a.inSession - !!b.inSession) || (starts(a) - starts(b)) || a.name.localeCompare(b.name))
+    .slice(0, 30);
+}
+
+function renderOutside() {
+  const term = $("outsideSearch").value.trim();
+  const rows = outsideMatches(term);
+  $("outsideResults").innerHTML = rows.map(p => {
+    const st = p.inSession ? p.inSession.status : null;
+    const here = st === "arrived";
+    const note = here ? "já chegou" : st ? "na lista" : "fora da lista";
+    return `<button type="button" class="outside-row" data-id="${p.id}" ${here ? "disabled" : ""}>
+      <span>${esc(p.name)} <span class="badge">${p.gender}</span></span>
+      <span class="muted">${note}</span>
+    </button>`;
+  }).join("") || (term ? '<p class="muted">Ninguém cadastrado com esse nome.</p>' : "");
+
+  // Offer to register only when no registered player has exactly this name.
+  const exact = outsidePlayers.some(p => normalize(p.name) === normalize(term));
+  $("outsideNew").classList.toggle("hidden", !term || exact);
+  $("outsideNewLegend").textContent = `Cadastrar “${term}” como novo`;
+}
+
 $("addOutside").onclick = async () => {
-  const name = prompt("Nome de quem apareceu fora da pré-lista:");
-  if (!name) return;
-  const score = Number(prompt("Score estimado:", "70") || 70);
-  const gender = (prompt("Sexo (M/F/X):", "F") || "X").toUpperCase();
   try {
-    const p = await api(`/api/sessions/${sessionId}/add-player`, {
-      method:"POST",
-      body:JSON.stringify({name,score,gender})
-    });
-    await setAttendance(p.id, "arrived");
-  } catch(e) { toast(e.message); }
+    outsidePlayers = await api("/api/players");
+  } catch(e) { toast(e.message); return; }
+  $("outsideSearch").value = "";
+  renderOutside();
+  $("addOutsideDialog").showModal();
+  $("outsideSearch").focus();
 };
+
+$("outsideSearch").oninput = renderOutside;
+$("outsideCancel").onclick = () => $("addOutsideDialog").close();
+$("addOutsideForm").onsubmit = e => e.preventDefault();
+
+$("outsideResults").onclick = async e => {
+  const row = e.target.closest(".outside-row");
+  if (!row || row.disabled) return;
+  $("addOutsideDialog").close();
+  // The attendance route creates the row when the player isn't on the list.
+  await setAttendance(Number(row.dataset.id), "arrived");
+};
+
+$("outsideCreate").onclick = () => busy([$("outsideCreate")], "Cadastrando…", async () => {
+  const name = $("outsideSearch").value.trim();
+  if (!name) return;
+  const p = await api(`/api/sessions/${sessionId}/add-player`, {
+    method:"POST",
+    body:JSON.stringify({name, score:Number($("outsideScore").value || 70), gender:$("outsideGender").value})
+  });
+  $("addOutsideDialog").close();
+  await setAttendance(p.id, "arrived");
+});
 
 $("generate").onclick = () => busy([$("generate")], "Sorteando…", async () => {
   const versus = state.session.opponents && state.session.opponents.length

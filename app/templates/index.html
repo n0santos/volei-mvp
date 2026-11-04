@@ -48,6 +48,28 @@
     </div>
   </form>
 </dialog>
+<dialog id="addOutsideDialog">
+  <form id="addOutsideForm">
+    <h2>Adicionar à sessão</h2>
+    <label>Nome <input id="outsideSearch" autocomplete="off" autocapitalize="words" placeholder="Digite parte do nome"></label>
+    <div id="outsideResults" class="outside-results"></div>
+    <fieldset id="outsideNew" class="hidden">
+      <legend id="outsideNewLegend">Cadastrar novo</legend>
+      <div class="inline">
+        <input id="outsideScore" type="number" min="0" max="100" value="70" aria-label="Score">
+        <select id="outsideGender" aria-label="Sexo">
+          <option value="F">F</option>
+          <option value="M">M</option>
+          <option value="X">X</option>
+        </select>
+        <button type="button" id="outsideCreate" class="primary">Cadastrar e marcar chegada</button>
+      </div>
+    </fieldset>
+    <div class="actions">
+      <button type="button" id="outsideCancel">Fechar</button>
+    </div>
+  </form>
+</dialog>
 <div class="app">
   <main>
     <section id="setup" class="panel">
