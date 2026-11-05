@@ -23,6 +23,7 @@ class Base(DeclarativeBase):
 MISSING_COLUMNS = {
     ("teams", "max_players"): "INTEGER NOT NULL DEFAULT 7",
     ("sessions", "opponents"): "TEXT",
+    ("sessions", "team_affinity"): "BOOLEAN NOT NULL DEFAULT 0",
     ("matches", "opponent"): "VARCHAR(120)",
     ("matches", "winner"): "VARCHAR(1)",
     ("tournament_matches", "stage"): "VARCHAR(20) NOT NULL DEFAULT 'grupos'",

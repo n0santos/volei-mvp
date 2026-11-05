@@ -135,7 +135,11 @@ async def create_session(data: SessionCreate, db: DBSession = Depends(get_db)):
         s.active = False
 
     opponents = [o.strip() for o in (data.opponents or []) if o.strip()]
-    s = GameSession(name=data.name, opponents=json.dumps(opponents, ensure_ascii=False) if opponents else None)
+    s = GameSession(
+        name=data.name,
+        opponents=json.dumps(opponents, ensure_ascii=False) if opponents else None,
+        team_affinity=bool(data.team_affinity) and not opponents,
+    )
     db.add(s)
     db.flush()
 
@@ -249,6 +253,7 @@ def session_state(session_id: int, db: DBSession = Depends(get_db)):
         "session": {
             "id": s.id, "name": s.name,
             "opponents": json.loads(s.opponents) if s.opponents else [],
+            "team_affinity": bool(s.team_affinity),
             "next_opponent": next_opponent(db, s.id, json.loads(s.opponents)) if s.opponents else None,
         },
         "players": players_data,
@@ -399,7 +404,7 @@ async def generate_match(session_id: int, db: DBSession = Depends(get_db), data:
         await broadcast(session_id)
         return {"match_id": m.id}
 
-    a, b, diff = balance_teams(chosen, tournament_groups(db))
+    a, b, diff = balance_teams(chosen, tournament_groups(db) if session.team_affinity else {})
 
     m = Match(session_id=session_id, number=number, status="proposed")
     db.add(m)

@@ -42,3 +42,18 @@ def test_add_missing_columns_skips_a_table_that_does_not_exist_yet(tmp_path, mon
     monkeypatch.setattr(database, "engine", empty_engine)
 
     database.add_missing_columns()  # must not raise
+
+
+def test_add_missing_columns_leaves_old_sessions_with_affinity_off(tmp_path, monkeypatch):
+    old_engine = create_engine(f"sqlite:///{tmp_path / 'old_sessions.db'}")
+    with old_engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE sessions (id INTEGER PRIMARY KEY, name VARCHAR(120) NOT NULL, opponents TEXT)"
+        )
+        conn.exec_driver_sql("INSERT INTO sessions (name) VALUES ('Vôlei 28/10')")
+    monkeypatch.setattr(database, "engine", old_engine)
+
+    database.add_missing_columns()
+
+    with old_engine.connect() as conn:
+        assert conn.exec_driver_sql("SELECT team_affinity FROM sessions").scalar() == 0

@@ -24,6 +24,9 @@ class Session(Base):
     # "Against a team" night: JSON list of opponent names. Each match then drafts
     # one side of 6 from the arrivals and the opponent alternates down this list.
     opponents: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Optional mode: the team draw keeps players of the same tournament team on
+    # the same side (see services/teams.py AFFINITY_*). Off by default.
+    team_affinity: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
 class Attendance(Base):

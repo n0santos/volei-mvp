@@ -13,6 +13,7 @@ class PlayerCreate(BaseModel):
 class SessionCreate(BaseModel):
     name: str = "Vôlei"
     player_ids: list[int] | None = None
+    team_affinity: bool = False  # 6x6 only: keep tournament teammates on the same side
     opponents: list[str] | None = None  # "against a team" night: 6 drafted per match vs these teams, in turn
 
 

@@ -193,7 +193,7 @@ function renderVersus() {
   badge.classList.toggle("versus", Boolean(s.opponents && s.opponents.length));
   badge.textContent = s.opponents && s.opponents.length
     ? `Modo contra equipe · ${s.opponents.join(" e ")}`
-    : "Modo 6×6";
+    : (s.team_affinity ? "Modo 6×6 · colegas do torneio juntos" : "Modo 6×6");
   box.classList.toggle("hidden", !(s.opponents && s.opponents.length));
   if (box.classList.contains("hidden")) return;
 
@@ -372,6 +372,8 @@ $("newSession").onclick = async () => {
     $("newSessionName").value = "Vôlei " + new Date().toLocaleDateString("pt-BR");
     document.querySelector("input[name=sessionMode][value=normal]").checked = true;
     $("versusTeams").classList.add("hidden");
+    $("teamAffinity").checked = false;
+    $("affinityOption").classList.remove("hidden");
     const warning = $("newSessionWarning");
     warning.classList.toggle("hidden", !sessionId);
     if (sessionId) warning.textContent = `Isto encerra a sessão atual (${$("sessionName").textContent}). Ela fica guardada, mas sai da tela.`;
@@ -387,7 +389,9 @@ $("newSession").onclick = async () => {
 };
 
 document.querySelectorAll("input[name=sessionMode]").forEach(r => r.addEventListener("change", () => {
-  $("versusTeams").classList.toggle("hidden", document.querySelector("input[name=sessionMode]:checked").value !== "versus");
+  const isVersus = document.querySelector("input[name=sessionMode]:checked").value === "versus";
+  $("versusTeams").classList.toggle("hidden", !isVersus);
+  $("affinityOption").classList.toggle("hidden", isVersus);
 }));
 $("newSessionCancel").onclick = () => $("newSessionDialog").close();
 
@@ -400,7 +404,7 @@ $("newSessionForm").onsubmit = async e => {
     const opponents = [...document.querySelectorAll("input[name=versusTeam]:checked")].map(i => i.value);
     if (versus && !opponents.length) { toast("Marque ao menos uma equipe adversária"); return; }
     const s = await api("/api/sessions", {
-      method:"POST", body:JSON.stringify(versus ? {name, opponents} : {name})
+      method:"POST", body:JSON.stringify(versus ? {name, opponents} : {name, team_affinity: $("teamAffinity").checked})
     });
     $("newSessionDialog").close();
     sessionId = s.id;
