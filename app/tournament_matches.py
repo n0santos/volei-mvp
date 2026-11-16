@@ -435,7 +435,8 @@ def get_standings(tournament_id: int, db: DBSession = Depends(get_db)):
     else:
         for row in rows:
             row["qualified"] = False
-    return {"complete": complete, "rows": rows}
+    # The adjustment list rides along so the page polls one endpoint, not two.
+    return {"complete": complete, "rows": rows, "adjustments": list_adjustments(tournament_id, db)}
 
 
 def stage_match(db, tournament_id, stage):

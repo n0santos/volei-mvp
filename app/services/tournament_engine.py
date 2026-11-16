@@ -192,8 +192,6 @@ def compute_standings(matches, teams=(), adjustments=None):
 
     standings = list(rows.values())
     for s in standings:
-        s["sets_balance"] = s["sets_for"] - s["sets_against"]
-        s["points_balance"] = s["points_for"] - s["points_against"]
         s["sets_ratio"] = _shown_ratio(s["sets_for"], s["sets_against"])
         s["points_ratio"] = _shown_ratio(s["points_for"], s["points_against"])
 

@@ -20,6 +20,11 @@ from test_tournament_knockout import FOUR_QUALIFY, TIMES
 WHEN = datetime(2026, 11, 28, 13, 0)
 
 
+
+def bal(row, kind):
+    """Won minus lost (sets or points): the API sends the counts, not balances."""
+    return row[f"{kind}_for"] - row[f"{kind}_against"]
+
 def make_db():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -85,8 +90,8 @@ def test_walkover_counts_like_a_2_0_in_the_standings():
 
     rows = {r["team"]: r for r in get_standings(t.id, db)["rows"]}
 
-    assert (rows["T1"]["tournament_points"], rows["T1"]["wins"], rows["T1"]["sets_balance"], rows["T1"]["points_balance"]) == (3, 1, 2, 42)
-    assert (rows["T2"]["tournament_points"], rows["T2"]["losses"], rows["T2"]["sets_balance"], rows["T2"]["points_balance"]) == (0, 1, -2, -42)
+    assert (rows["T1"]["tournament_points"], rows["T1"]["wins"], bal(rows["T1"], "sets"), bal(rows["T1"], "points")) == (3, 1, 2, 42)
+    assert (rows["T2"]["tournament_points"], rows["T2"]["losses"], bal(rows["T2"], "sets"), bal(rows["T2"], "points")) == (0, 1, -2, -42)
 
 
 def test_walkover_rejects_an_unknown_side():

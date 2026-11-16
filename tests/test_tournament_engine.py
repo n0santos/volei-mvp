@@ -3,6 +3,11 @@ from types import SimpleNamespace
 from app.services.tournament_engine import SET_TARGETS, is_set_over, set_winner, match_points, match_result, compute_standings, mark_qualified
 
 
+
+def bal(row, kind):
+    """Won minus lost (sets or points): the API sends the counts, not balances."""
+    return row[f"{kind}_for"] - row[f"{kind}_against"]
+
 def test_set_targets():
     assert SET_TARGETS == {1: 21, 2: 21, 3: 18}
 
@@ -119,9 +124,9 @@ def test_tournament_points_tie_broken_by_set_balance():
     assert by_team["D"]["tournament_points"] == 3
     assert by_team["E"]["tournament_points"] == 3
     assert by_team["F"]["tournament_points"] == 3
-    assert by_team["E"]["sets_balance"] == 2
-    assert by_team["F"]["sets_balance"] == 0
-    assert by_team["D"]["sets_balance"] == -2
+    assert bal(by_team["E"], "sets") == 2
+    assert bal(by_team["F"], "sets") == 0
+    assert bal(by_team["D"], "sets") == -2
     order = [s["team"] for s in standings if s["team"] in {"D", "E", "F"}]
     assert order == ["E", "F", "D"]
 
@@ -140,8 +145,8 @@ def test_tournament_points_wins_and_set_balance_tie_broken_by_wins_first():
     assert by_team["H"]["tournament_points"] == 4
     assert by_team["G"]["wins"] == 2
     assert by_team["H"]["wins"] == 1
-    assert by_team["G"]["sets_balance"] == 0
-    assert by_team["H"]["sets_balance"] == 1
+    assert bal(by_team["G"], "sets") == 0
+    assert bal(by_team["H"], "sets") == 1
     # G has worse set balance but more wins, and wins is checked first.
     order = [s["team"] for s in standings if s["team"] in {"G", "H"}]
     assert order == ["G", "H"]
@@ -156,8 +161,8 @@ def test_tournament_points_wins_and_set_balance_tie_broken_by_point_balance():
     by_team = {s["team"]: s for s in standings}
     assert by_team["I"]["tournament_points"] == by_team["J"]["tournament_points"] == 3
     assert by_team["I"]["wins"] == by_team["J"]["wins"] == 1
-    assert by_team["I"]["sets_balance"] == by_team["J"]["sets_balance"] == 2
-    assert by_team["I"]["points_balance"] > by_team["J"]["points_balance"]
+    assert bal(by_team["I"], "sets") == bal(by_team["J"], "sets") == 2
+    assert bal(by_team["I"], "points") > bal(by_team["J"], "points")
     order = [s["team"] for s in standings if s["team"] in {"I", "J"}]
     assert order == ["I", "J"]
 
@@ -170,7 +175,7 @@ def test_point_ratio_not_point_balance_breaks_ties():
     ]
     standings = compute_standings(matches)
     by_team = {s["team"]: s for s in standings}
-    assert by_team["K"]["points_balance"] == by_team["L"]["points_balance"] == 20
+    assert bal(by_team["K"], "points") == bal(by_team["L"], "points") == 20
     order = [s["team"] for s in standings if s["team"] in {"K", "L"}]
     assert order == ["L", "K"]
     assert by_team["L"]["tied"] is False
@@ -209,8 +214,8 @@ def test_set_ratio_not_set_balance_breaks_ties():
     standings = compute_standings(matches)
     by_team = {s["team"]: s for s in standings}
     for team in ("U", "V"):
-        assert (by_team[team]["wins"], by_team[team]["tournament_points"], by_team[team]["sets_balance"]) == (1, 3, -2)
-    assert by_team["U"]["points_balance"] > by_team["V"]["points_balance"]
+        assert (by_team[team]["wins"], by_team[team]["tournament_points"], bal(by_team[team], "sets")) == (1, 3, -2)
+    assert bal(by_team["U"], "points") > bal(by_team["V"], "points")
     order = [s["team"] for s in standings if s["team"] in {"U", "V"}]
     assert order == ["V", "U"]
     assert by_team["V"]["sets_ratio"] == 0.6
@@ -266,7 +271,7 @@ def test_head_to_head_breaks_a_two_way_tie():
     by_team = {s["team"]: s for s in standings}
     for team in ("X", "Y"):
         assert (by_team[team]["tournament_points"], by_team[team]["wins"]) == (3, 1)
-        assert (by_team[team]["sets_balance"], by_team[team]["points_balance"]) == (0, 0)
+        assert (bal(by_team[team], "sets"), bal(by_team[team], "points")) == (0, 0)
     assert [s["team"] for s in standings] == ["W", "X", "Y", "Z"]
     assert [s["rank"] for s in standings] == [1, 2, 3, 4]
     assert by_team["X"]["tied"] is False
@@ -333,6 +338,12 @@ def test_full_tie_marks_teams_as_tied():
     by_team = {s["team"]: s for s in standings}
     assert by_team["M"]["tied"] is True
     assert by_team["N"]["tied"] is True
+
+
+def test_rows_carry_ratios_not_balances():
+    row = compute_standings([m("A", "B", [(21, 10), (21, 10)])])[0]
+    assert "sets_balance" not in row and "points_balance" not in row
+    assert row["points_ratio"] == 2.1
 
 
 def test_compute_standings_raises_on_unfinished_match():

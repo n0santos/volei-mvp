@@ -187,6 +187,7 @@ def test_point_adjustments_show_in_the_standings_and_can_be_removed():
     adj = create_adjustment(t.id, AdjustmentCreate(team_id=team_a.id, points=-1, reason="Faltou à abertura"), db)
     by_team = {row["team"]: row for row in standings_rows(t.id, db)}
     assert (by_team["A"]["tournament_points"], by_team["A"]["adjustment"]) == (2, -1)
+    assert [(a["team"], a["points"]) for a in get_standings(t.id, db)["adjustments"]] == [("A", -1)]
     assert [(a["team"], a["points"], a["reason"]) for a in list_adjustments(t.id, db)] == [("A", -1, "Faltou à abertura")]
 
     delete_adjustment(t.id, adj.id, db)

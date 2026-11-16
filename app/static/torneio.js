@@ -517,13 +517,9 @@ $("matchesSection").addEventListener("change", async e => {
 });
 
 async function loadStandings() {
-  const [standings, adjustments] = await Promise.all([
-    api(`/api/tournaments/${tournamentId}/standings`),
-    api(`/api/tournaments/${tournamentId}/adjustments`),
-  ]);
-  lastStandings = standings;
+  lastStandings = await api(`/api/tournaments/${tournamentId}/standings`);
   renderStandings(lastStandings);
-  renderAdjustments(adjustments);
+  renderAdjustments(lastStandings.adjustments || []);
   updateKnockoutForms();
   renderDraw();
 }
