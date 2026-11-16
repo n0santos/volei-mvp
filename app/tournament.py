@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session as DBSession
 from .database import get_db
 from .models import Tournament, Team, TeamPlayer, Player
 from .schemas import TournamentCreate, TeamCreate, TeamUpdate, TeamPlayerAdd, TeamPlayerUpdate
+from .services.tournament_engine import DRAW_SLOTS, DRAW_FIXTURES, DRAW_DEFAULT_TIMES
 
 router = APIRouter()
 
@@ -131,6 +132,14 @@ def tournament_state(tournament_id: int, db: DBSession = Depends(get_db)):
     return {
         "tournament": {"id": t.id, "name": t.name, "start_date": t.start_date, "end_date": t.end_date},
         "teams": teams_data,
+        # The draw format lives only on the server; the page builds its form from this.
+        "draw": {
+            "slots": list(DRAW_SLOTS),
+            "fixtures": [
+                {"a": a, "b": b, "day": day, "time": time}
+                for (a, b), (day, time) in zip(DRAW_FIXTURES, DRAW_DEFAULT_TIMES)
+            ],
+        },
     }
 
 

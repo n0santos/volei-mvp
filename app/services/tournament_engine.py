@@ -9,6 +9,14 @@ DRAW_FIXTURES = (
     ("A", "F"), ("D", "F"), ("C", "E"),
     ("E", "F"), ("D", "B"), ("C", "A"),
 )
+# Suggested (day, time) for each game above, day 0 being the tournament's
+# first day: game 1 on Friday 20h, 2-6 on Saturday from 12h (break at 15h),
+# 7-9 on Sunday from 9h. The draw form starts from these; any can be changed.
+DRAW_DEFAULT_TIMES = (
+    (0, "20:00"),
+    (1, "12:00"), (1, "13:00"), (1, "14:00"), (1, "16:00"), (1, "17:00"),
+    (2, "09:00"), (2, "10:00"), (2, "11:00"),
+)
 QUALIFIED = 4  # the top 4 go to the semifinals
 
 

@@ -114,6 +114,7 @@ async function loadActiveTournament() {
 async function loadState() {
   const state = await api(`/api/tournaments/${tournamentId}`);
   lastTeams = state.teams;
+  drawFormat = state.draw;
   renderTeams(state.teams);
   renderDraw();
 
@@ -337,7 +338,7 @@ async function loadMatches() {
   renderDraw();
 }
 
-const QUALIFYING_GAMES = 9;
+const qualifyingGames = () => drawFormat.fixtures.length;
 
 function renderMatches(matches) {
   // The 8s poll re-renders; skip it when nothing changed so an open "Mais"
@@ -593,9 +594,11 @@ function updateKnockoutForms() {
     ? `A classificatória terminou. Confirme os horários das semifinais (1º × 4º e 2º × 3º)${when}.`
     : tied
       ? "Empate na classificação. Faça o sorteio e cadastre as semifinais em “+ Jogo”."
-      : `Disponível quando os ${QUALIFYING_GAMES} jogos da classificatória terminarem.`;
+      : `Disponível quando os ${qualifyingGames()} jogos da classificatória terminarem.`;
 
   $("generateFinalForm").classList.toggle("hidden", finalExists);
+  // A final entered by hand ("+ Jogo") doesn't bring the 3rd-place game with it.
+  $("thirdMissing").classList.toggle("hidden", !finalExists || Boolean(byStage("terceiro_lugar")));
   $("finalBtn").disabled = !finalReady;
   $("finalHint").textContent = finalReady
     ? `As semifinais terminaram. Confirme os horários do 3º lugar e da final${when}.`
@@ -675,7 +678,7 @@ function fmtRatio(ratio, won, lost) {
 function renderStandings(table) {
   const rows = table.rows || [];
   const playedGames = rows.reduce((sum, r) => sum + r.wins + r.losses, 0) / 2;
-  const progress = table.complete ? "Classificatória encerrada" : `${playedGames} de ${QUALIFYING_GAMES} jogos`;
+  const progress = table.complete ? "Classificatória encerrada" : `${playedGames} de ${qualifyingGames()} jogos`;
 
   $("standingsBody").innerHTML = `
       <section class="panel">
@@ -714,33 +717,29 @@ function renderStandings(table) {
 
 // Draw: the organizers draw slots A-F, then the nine qualifying games are
 // created from the fixed table. The panel disappears once everyone is in one table.
-const DRAW_SLOTS = ["A", "B", "C", "D", "E", "F"];
-const DRAW_FIXTURES = [
-  ["B", "C"], ["B", "A"], ["D", "E"],
-  ["A", "F"], ["D", "F"], ["C", "E"],
-  ["E", "F"], ["D", "B"], ["C", "A"],
-];
-const DRAW_FIRST_GAME = 13 * 60; // 13:00, then one game every 50 min until told otherwise
-const DRAW_GAME_MINUTES = 50;
+// The format (slots, pairings, suggested day/time per game) comes from the
+// server with the tournament state, so the pairings are defined in one place.
+let drawFormat = { slots: [], fixtures: [] };
 let drawKey = null;
 
 const drawTeam = slot => lastTeams.find(t => String(t.id) === $(`drawSlot${slot}`).value);
 
 function renderDraw() {
-  const show = matchesLoaded && lastTeams.length === DRAW_SLOTS.length && !lastMatches.some(m => m.stage === "grupos");
+  const slots = drawFormat.slots;
+  const show = matchesLoaded && slots.length > 0 && lastTeams.length === slots.length && !lastMatches.some(m => m.stage === "grupos");
   $("drawSection").classList.toggle("hidden", !show);
   if (!show) { drawKey = null; return; }
 
   // Rebuild only when teams or days change, so a half-filled draw survives the poll.
-  const key = JSON.stringify([lastTeams.map(t => [t.id, t.code]), tournamentDays]);
+  const key = JSON.stringify([lastTeams.map(t => [t.id, t.code]), tournamentDays, drawFormat]);
   if (key !== drawKey) {
     drawKey = key;
     const options = '<option value="">Escolha a equipe</option>' + lastTeams.map(t => `<option value="${t.id}">${esc(t.code)}</option>`).join("");
-    $("drawSlots").innerHTML = DRAW_SLOTS.map(s => `<label>Posição ${s}<select id="drawSlot${s}" required>${options}</select></label>`).join("");
-    const days = tournamentDays.map(d => `<option value="${d}">${dayLabel(d)}</option>`).join("");
-    $("drawGames").innerHTML = DRAW_FIXTURES.map(([a, b], i) => {
-      const minutes = DRAW_FIRST_GAME + DRAW_GAME_MINUTES * i;
-      const time = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+    $("drawSlots").innerHTML = slots.map(s => `<label>Posição ${s}<select id="drawSlot${s}" required>${options}</select></label>`).join("");
+    $("drawGames").innerHTML = drawFormat.fixtures.map(({ a, b, day, time }, i) => {
+      // Suggested day is counted from the first day; clamp for shorter tournaments.
+      const suggested = tournamentDays[Math.min(day, tournamentDays.length - 1)];
+      const days = tournamentDays.map(d => `<option value="${d}"${d === suggested ? " selected" : ""}>${dayLabel(d)}</option>`).join("");
       return `
         <div class="draw-game" data-a="${a}" data-b="${b}">
           <span class="dg-n">Jogo ${i + 1}</span>
@@ -762,9 +761,9 @@ function updateDrawPreview() {
     row.querySelector(".dg-teams").innerHTML = `<span class="dg-side">${side(row.dataset.a)}</span><span class="dg-x">×</span><span class="dg-side">${side(row.dataset.b)}</span>`;
   });
 
-  const chosen = DRAW_SLOTS.map(s => $(`drawSlot${s}`).value).filter(Boolean);
+  const chosen = drawFormat.slots.map(s => $(`drawSlot${s}`).value).filter(Boolean);
   const repeated = new Set(chosen).size < chosen.length;
-  const ready = chosen.length === DRAW_SLOTS.length && !repeated;
+  const ready = chosen.length === drawFormat.slots.length && !repeated;
   $("drawBtn").disabled = !ready;
   $("drawHint").textContent = repeated
     ? "Cada equipe só pode aparecer uma vez no sorteio."
@@ -779,7 +778,7 @@ $("drawForm").addEventListener("submit", async e => {
   e.preventDefault();
   $("drawBtn").disabled = true;
   try {
-    const slots = Object.fromEntries(DRAW_SLOTS.map(s => [s, Number($(`drawSlot${s}`).value)]));
+    const slots = Object.fromEntries(drawFormat.slots.map(s => [s, Number($(`drawSlot${s}`).value)]));
     const times = [...document.querySelectorAll(".draw-game")].map(
       row => `${row.querySelector(".dg-day").value}T${row.querySelector(".dg-time").value}`
     );

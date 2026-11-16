@@ -81,3 +81,27 @@ def test_table_is_only_complete_after_all_nine_games():
     table = get_standings(t.id, db)
     assert table["complete"] is True
     assert sum(row["qualified"] for row in table["rows"]) == 4
+
+
+def test_tournament_state_sends_the_draw_format():
+    from app.services.tournament_engine import DRAW_SLOTS, DRAW_DEFAULT_TIMES
+    from app.tournament import tournament_state
+
+    db = make_db()
+    t, teams = make_six(db)
+    draw_format = tournament_state(t.id, db)["draw"]
+
+    assert draw_format["slots"] == list(DRAW_SLOTS)
+    assert [(f["a"], f["b"]) for f in draw_format["fixtures"]] == list(DRAW_FIXTURES)
+    assert [(f["day"], f["time"]) for f in draw_format["fixtures"]] == list(DRAW_DEFAULT_TIMES)
+
+
+def test_default_times_follow_the_official_schedule():
+    from app.services.tournament_engine import DRAW_DEFAULT_TIMES
+
+    assert len(DRAW_DEFAULT_TIMES) == len(DRAW_FIXTURES)
+    # Friday (day 0): game 1; Saturday: games 2-6 from 12h; Sunday: 7-9 from 9h.
+    assert [day for day, _ in DRAW_DEFAULT_TIMES] == [0, 1, 1, 1, 1, 1, 2, 2, 2]
+    assert DRAW_DEFAULT_TIMES[0] == (0, "20:00")
+    assert DRAW_DEFAULT_TIMES[1] == (1, "12:00")
+    assert DRAW_DEFAULT_TIMES[6] == (2, "09:00")
