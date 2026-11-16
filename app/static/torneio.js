@@ -498,7 +498,7 @@ $("matchesSection").addEventListener("change", async e => {
   if (!select || !select.value) return;
   const present = select.value;
   const label = select.options[select.selectedIndex].text;
-  if (!confirm(`Registrar W.O.: ${label}? O jogo termina 2×0 (15×0 e 15×0).`)) {
+  if (!confirm(`Registrar W.O.: ${label}? O jogo termina 2×0 (21×0 e 21×0).`)) {
     select.value = "";
     return;
   }

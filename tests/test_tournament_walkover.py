@@ -51,14 +51,14 @@ def sets_of(db, match):
     return [(r.points_a, r.points_b, r.closed) for r in rows]
 
 
-def test_walkover_records_two_closed_15_0_sets_for_the_team_that_showed_up():
+def test_walkover_records_two_closed_21_0_sets_for_the_team_that_showed_up():
     db = make_db()
     t, teams = make_teams(db)
     m = new_match(db, t, teams["T1"], teams["T2"])
 
     set_walkover(t.id, m.id, WalkoverRequest(present="a"), db)
 
-    assert sets_of(db, m) == [(15, 0, True), (15, 0, True)]
+    assert sets_of(db, m) == [(21, 0, True), (21, 0, True)]
     assert (m.status, m.walkover) == ("encerrado", True)
     board = get_scoreboard(t.id, m.id, db)
     assert board["result"]["winner"] == "A"
@@ -73,7 +73,7 @@ def test_walkover_when_team_b_shows_up():
 
     set_walkover(t.id, m.id, WalkoverRequest(present="b"), db)
 
-    assert sets_of(db, m) == [(0, 15, True), (0, 15, True)]
+    assert sets_of(db, m) == [(0, 21, True), (0, 21, True)]
     assert get_scoreboard(t.id, m.id, db)["result"]["winner"] == "B"
 
 
@@ -85,8 +85,8 @@ def test_walkover_counts_like_a_2_0_in_the_standings():
 
     rows = {r["team"]: r for r in get_standings(t.id, db)["rows"]}
 
-    assert (rows["T1"]["tournament_points"], rows["T1"]["wins"], rows["T1"]["sets_balance"], rows["T1"]["points_balance"]) == (3, 1, 2, 30)
-    assert (rows["T2"]["tournament_points"], rows["T2"]["losses"], rows["T2"]["sets_balance"], rows["T2"]["points_balance"]) == (0, 1, -2, -30)
+    assert (rows["T1"]["tournament_points"], rows["T1"]["wins"], rows["T1"]["sets_balance"], rows["T1"]["points_balance"]) == (3, 1, 2, 42)
+    assert (rows["T2"]["tournament_points"], rows["T2"]["losses"], rows["T2"]["sets_balance"], rows["T2"]["points_balance"]) == (0, 1, -2, -42)
 
 
 def test_walkover_rejects_an_unknown_side():

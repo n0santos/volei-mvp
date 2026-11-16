@@ -27,7 +27,7 @@ KNOCKOUT_STAGES = STAGES - {"grupos"}
 # Position in the tournament: a stage can't be undone once a later one exists.
 STAGE_ORDER = {"grupos": 0, "semifinal_1": 1, "semifinal_2": 1, "terceiro_lugar": 2, "final": 2}
 
-WALKOVER_POINTS = 15  # regulation: a W.O. is 2x0 with partials of 15x0 and 15x0
+WALKOVER_POINTS = 21  # regulation: a W.O. is 2x0 with partials of 21x0 and 21x0
 
 
 def get_tournament_team(db, tournament_id, team_id):
