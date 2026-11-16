@@ -517,11 +517,59 @@ $("matchesSection").addEventListener("change", async e => {
 });
 
 async function loadStandings() {
-  lastStandings = await api(`/api/tournaments/${tournamentId}/standings`);
+  const [standings, adjustments] = await Promise.all([
+    api(`/api/tournaments/${tournamentId}/standings`),
+    api(`/api/tournaments/${tournamentId}/adjustments`),
+  ]);
+  lastStandings = standings;
   renderStandings(lastStandings);
+  renderAdjustments(adjustments);
   updateKnockoutForms();
   renderDraw();
 }
+
+// Point adjustments: regulation penalties on the overall table (-1 for missing
+// the opening ceremony, -3 for faking an injury, -3 to -6 for misconduct).
+function renderAdjustments(adjustments) {
+  populateTeamSelect($("adjustTeam"), lastTeams);
+  $("adjustList").innerHTML = adjustments.length
+    ? adjustments.map(a => `
+        <li>
+          <strong>${fmtSigned(a.points)}</strong>
+          <span>${esc(a.team)} — ${esc(a.reason)}</span>
+          <button type="button" data-adjust-id="${a.id}">Remover</button>
+        </li>`).join("")
+    : '<li class="muted">Nenhum ajuste.</li>';
+}
+
+$("adjustForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await api(`/api/tournaments/${tournamentId}/adjustments`, {
+      method: "POST",
+      body: JSON.stringify({
+        team_id: Number($("adjustTeam").value),
+        points: Number($("adjustPoints").value),
+        reason: $("adjustReason").value,
+      }),
+    });
+    $("adjustReason").value = "";
+    await loadStandings();
+  } catch (err) {
+    toast(err.message);
+  }
+});
+
+$("adjustList").addEventListener("click", async e => {
+  const btn = e.target.closest("[data-adjust-id]");
+  if (!btn || !confirm("Remover este ajuste de pontos?")) return;
+  try {
+    await api(`/api/tournaments/${tournamentId}/adjustments/${btn.dataset.adjustId}`, { method: "DELETE" });
+    await loadStandings();
+  } catch (err) {
+    toast(err.message);
+  }
+});
 
 // Both generate buttons stay on screen with a note about what they wait for,
 // and go away once their games exist.
@@ -616,6 +664,13 @@ function fmtSigned(n) {
   return n > 0 ? `+${n}` : String(n);
 }
 
+// The API sends null when the ratio divides by zero: infinite if the team won
+// something (it goes first among the tied), "–" if nothing was played.
+function fmtRatio(ratio, won, lost) {
+  if (ratio === null) return won > 0 ? "∞" : "–";
+  return ratio.toFixed(2).replace(".", ",");
+}
+
 function renderStandings(table) {
   const rows = table.rows || [];
   const playedGames = rows.reduce((sum, r) => sum + r.wins + r.losses, 0) / 2;
@@ -630,8 +685,8 @@ function renderStandings(table) {
         <div class="st-row st-head">
           <span></span><span>Equipe</span>
           <span title="Jogos">J</span><span title="Vitórias">V</span>
-          <span title="Saldo de sets">SS</span><span title="Saldo de pontos">SP</span>
           <span title="Pontos">Pts</span>
+          <span title="Razão de sets (vencidos ÷ perdidos)">RS</span><span title="Razão de pontos (pró ÷ contra)">RP</span>
         </div>
         ${rows.map(row => `
           <div class="st-row${row.qualified ? " qualified" : ""}">
@@ -642,13 +697,14 @@ function renderStandings(table) {
                 ${esc(row.team)}
                 ${row.qualified ? '<small class="note ok">Classificada</small>' : ""}
                 ${row.tied ? '<small class="note tie">Empate</small>' : ""}
+                ${row.adjustment ? `<small class="note adj">${fmtSigned(row.adjustment)} pt de ajuste</small>` : ""}
               </span>
             </span>
             <span>${row.wins + row.losses}</span>
             <span>${row.wins}</span>
-            <span>${fmtSigned(row.sets_balance)}</span>
-            <span>${fmtSigned(row.points_balance)}</span>
             <strong>${row.tournament_points}</strong>
+            <span>${fmtRatio(row.sets_ratio, row.sets_for, row.sets_against)}</span>
+            <span>${fmtRatio(row.points_ratio, row.points_for, row.points_against)}</span>
           </div>
         `).join("")}
       </section>

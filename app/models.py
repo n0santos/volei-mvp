@@ -143,3 +143,17 @@ class TournamentSetResult(Base):
     points_a: Mapped[int] = mapped_column(Integer, default=0)
     points_b: Mapped[int] = mapped_column(Integer, default=0)
     closed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class TournamentAdjustment(Base):
+    """Points added to (usually taken from) a team's tournament total by the
+    organization: -1 for missing the opening ceremony, -3 for faking an
+    injury, -3 to -6 for serious misconduct. Counts in the 'points' criterion."""
+    __tablename__ = "tournament_adjustments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"))
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    points: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

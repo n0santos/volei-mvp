@@ -61,18 +61,33 @@ def _new_team_row(name):
         "points_for": 0,
         "points_against": 0,
         "tournament_points": 0,
+        "adjustment": 0,
     }
 
 
+def _ratio(won, lost):
+    # Regulation: a ratio that divides by zero puts the team first among the
+    # tied, so it counts as infinite. 0/0 (nothing played yet) is neutral.
+    if lost == 0:
+        return float("inf") if won > 0 else 1.0
+    return won / lost
+
+
+def _shown_ratio(won, lost):
+    """Ratio for the API: None when it divides by zero (JSON has no infinity);
+    the client tells infinite from nothing played by the counts."""
+    return None if lost == 0 else round(won / lost, 3)
+
+
 def _standings_sort_key(row):
-    # Regulation, in order: points, wins, set balance, point balance. What's
+    # Regulation, in order: wins, points, set ratio, point ratio. What's
     # still equal after this goes to head-to-head, then to a draw by the
     # organization (_resolve_ties).
     return (
-        -row["tournament_points"],
         -row["wins"],
-        -row["sets_balance"],
-        -row["points_balance"],
+        -row["tournament_points"],
+        -_ratio(row["sets_for"], row["sets_against"]),
+        -_ratio(row["points_for"], row["points_against"]),
     )
 
 
@@ -131,9 +146,10 @@ def mark_qualified(standings, slots):
             s["qualified"] = True
 
 
-def compute_standings(matches, teams=()):
+def compute_standings(matches, teams=(), adjustments=None):
     """`teams` lists names that must appear even with no match played (kept
-    first-come order among equals)."""
+    first-come order among equals). `adjustments` maps a team name to points
+    added to (usually taken from) its total, e.g. -1 for missing the opening."""
     rows = {}
     head_to_head = {}  # (winner, loser) -> how many times winner beat loser
 
@@ -170,10 +186,16 @@ def compute_standings(matches, teams=()):
         a["tournament_points"] += match_points(result["sets_a"], result["sets_b"])
         b["tournament_points"] += match_points(result["sets_b"], result["sets_a"])
 
+    for name, points in (adjustments or {}).items():
+        row(name)["adjustment"] += points
+        row(name)["tournament_points"] += points
+
     standings = list(rows.values())
     for s in standings:
         s["sets_balance"] = s["sets_for"] - s["sets_against"]
         s["points_balance"] = s["points_for"] - s["points_against"]
+        s["sets_ratio"] = _shown_ratio(s["sets_for"], s["sets_against"])
+        s["points_ratio"] = _shown_ratio(s["points_for"], s["points_against"])
 
     standings.sort(key=_standings_sort_key)
     _resolve_ties(standings, head_to_head)

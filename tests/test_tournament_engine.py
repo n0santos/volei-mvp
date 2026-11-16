@@ -162,19 +162,89 @@ def test_tournament_points_wins_and_set_balance_tie_broken_by_point_balance():
     assert order == ["I", "J"]
 
 
-def test_points_for_no_longer_breaks_ties():
-    # Same point balance (+20) but K scored more: not a regulation criterion,
-    # so with no head-to-head between them they stay tied.
+def test_point_ratio_not_point_balance_breaks_ties():
+    # Same point balance (+20), but L's ratio (50/30) beats K's (60/40).
     matches = [
         m("K", "V3", [(30, 20), (30, 20)]),
         m("L", "V4", [(25, 15), (25, 15)]),
     ]
-    by_team = {s["team"]: s for s in compute_standings(matches)}
+    standings = compute_standings(matches)
+    by_team = {s["team"]: s for s in standings}
     assert by_team["K"]["points_balance"] == by_team["L"]["points_balance"] == 20
-    assert by_team["K"]["points_for"] > by_team["L"]["points_for"]
-    assert by_team["K"]["tied"] is True
-    assert by_team["L"]["tied"] is True
-    assert by_team["K"]["rank"] == by_team["L"]["rank"]
+    order = [s["team"] for s in standings if s["team"] in {"K", "L"}]
+    assert order == ["L", "K"]
+    assert by_team["L"]["tied"] is False
+
+
+def test_wins_rank_ahead_of_tournament_points():
+    # Regulation: wins first, then points. G: two 2-1 wins and a 0-2 loss (4 pts).
+    # P: one 2-0 win and two 1-2 losses (5 pts). G has more wins, so G is ahead.
+    matches = [
+        m("G", "W1", [(21, 19), (19, 21), (18, 16)]),
+        m("G", "W2", [(21, 19), (19, 21), (18, 16)]),
+        m("G", "W3", [(10, 21), (10, 21)]),
+        m("P", "W4", [(21, 10), (21, 10)]),
+        m("P", "W5", [(21, 19), (19, 21), (16, 18)]),
+        m("P", "W6", [(21, 19), (19, 21), (16, 18)]),
+    ]
+    standings = compute_standings(matches)
+    by_team = {s["team"]: s for s in standings}
+    assert (by_team["G"]["wins"], by_team["G"]["tournament_points"]) == (2, 4)
+    assert (by_team["P"]["wins"], by_team["P"]["tournament_points"]) == (1, 5)
+    order = [s["team"] for s in standings if s["team"] in {"G", "P"}]
+    assert order == ["G", "P"]
+
+
+def test_set_ratio_not_set_balance_breaks_ties():
+    # Both 1 win, 3 points, set balance -2. U: sets 2-4 (0.5) with a far better
+    # point balance; V: sets 3-5 (0.6). Set ratio comes first, so V is ahead.
+    matches = [
+        m("U", "Q1", [(21, 0), (21, 0)]),
+        m("U", "Q2", [(20, 22), (20, 22)]),
+        m("U", "Q3", [(20, 22), (20, 22)]),
+        m("V", "Q4", [(21, 19), (19, 21), (18, 16)]),
+        m("V", "Q5", [(21, 19), (10, 21), (5, 18)]),
+        m("V", "Q6", [(5, 21), (5, 21)]),
+    ]
+    standings = compute_standings(matches)
+    by_team = {s["team"]: s for s in standings}
+    for team in ("U", "V"):
+        assert (by_team[team]["wins"], by_team[team]["tournament_points"], by_team[team]["sets_balance"]) == (1, 3, -2)
+    assert by_team["U"]["points_balance"] > by_team["V"]["points_balance"]
+    order = [s["team"] for s in standings if s["team"] in {"U", "V"}]
+    assert order == ["V", "U"]
+    assert by_team["V"]["sets_ratio"] == 0.6
+    assert by_team["U"]["sets_ratio"] == 0.5
+
+
+def test_nothing_conceded_takes_first_place_in_a_tie():
+    # Regulation: a ratio dividing by zero puts the team first among the tied.
+    # Both won 2-0 (set ratio infinite for both); the W.O. winner conceded no point.
+    matches = [
+        m("WO", "Z1", [(21, 0), (21, 0)]),
+        m("R", "Z2", [(21, 5), (21, 5)]),
+    ]
+    standings = compute_standings(matches)
+    by_team = {s["team"]: s for s in standings}
+    assert [s["team"] for s in standings][:2] == ["WO", "R"]
+    assert by_team["WO"]["sets_ratio"] is None and by_team["WO"]["points_ratio"] is None
+    assert by_team["R"]["points_ratio"] == 4.2
+
+
+def test_point_adjustments_count_toward_tournament_points():
+    # Same wins; a -2 adjustment drops A (3 pts) below B (2 pts).
+    matches = [
+        m("A", "Z1", [(21, 10), (21, 10)]),
+        m("B", "Z2", [(21, 19), (19, 21), (18, 16)]),
+        m("B", "Z3", [(10, 21), (10, 21)]),
+        m("A", "Z4", [(10, 21), (10, 21)]),
+    ]
+    standings = compute_standings(matches, adjustments={"A": -2})
+    by_team = {s["team"]: s for s in standings}
+    assert (by_team["A"]["tournament_points"], by_team["A"]["adjustment"]) == (1, -2)
+    assert (by_team["B"]["tournament_points"], by_team["B"]["adjustment"]) == (2, 0)
+    order = [s["team"] for s in standings if s["team"] in {"A", "B"}]
+    assert order == ["B", "A"]
 
 
 def level_pair_scenario():

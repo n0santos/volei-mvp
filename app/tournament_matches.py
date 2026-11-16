@@ -5,10 +5,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DBSession
 
 from .database import get_db
-from .models import Team, TournamentMatch, TournamentSetResult
+from .models import Team, TournamentMatch, TournamentSetResult, TournamentAdjustment
 from .schemas import (
     TournamentMatchCreate, TournamentMatchUpdate, SetPointRequest,
     GenerateSemifinalsRequest, GenerateFinalRequest, WalkoverRequest, DrawRequest,
+    AdjustmentCreate,
 )
 from .services.tournament_engine import (
     SET_TARGETS, DRAW_SLOTS, DRAW_FIXTURES, QUALIFIED,
@@ -346,8 +347,62 @@ def qualifying_standings(db, tournament_id, teams):
             sets=[(s.points_a, s.points_b) for s in sets],
         ))
 
-    standings = compute_standings(engine_matches, teams=team_codes.values())
+    adjustments = {}
+    for adj in db.execute(
+        select(TournamentAdjustment).where(TournamentAdjustment.tournament_id == tournament_id)
+    ).scalars():
+        if adj.team_id in team_codes:
+            code = team_codes[adj.team_id]
+            adjustments[code] = adjustments.get(code, 0) + adj.points
+
+    standings = compute_standings(engine_matches, teams=team_codes.values(), adjustments=adjustments)
     return standings, len(engine_matches) >= len(DRAW_FIXTURES)
+
+
+@router.get("/api/tournaments/{tournament_id}/adjustments")
+def list_adjustments(tournament_id: int, db: DBSession = Depends(get_db)):
+    get_tournament(db, tournament_id)
+    codes = {
+        team.id: team.code
+        for team in db.execute(select(Team).where(Team.tournament_id == tournament_id)).scalars()
+    }
+    rows = db.execute(
+        select(TournamentAdjustment)
+        .where(TournamentAdjustment.tournament_id == tournament_id)
+        .order_by(TournamentAdjustment.created_at, TournamentAdjustment.id)
+    ).scalars().all()
+    return [
+        {"id": a.id, "team_id": a.team_id, "team": codes.get(a.team_id), "points": a.points, "reason": a.reason}
+        for a in rows
+    ]
+
+
+@router.post("/api/tournaments/{tournament_id}/adjustments")
+def create_adjustment(tournament_id: int, data: AdjustmentCreate, db: DBSession = Depends(get_db)):
+    get_tournament(db, tournament_id)
+    get_tournament_team(db, tournament_id, data.team_id)
+    reason = data.reason.strip()
+    if data.points == 0:
+        raise HTTPException(400, "Informe quantos pontos ajustar")
+    if not reason:
+        raise HTTPException(400, "Informe o motivo do ajuste")
+    adj = TournamentAdjustment(
+        tournament_id=tournament_id, team_id=data.team_id, points=data.points, reason=reason[:200],
+    )
+    db.add(adj)
+    db.commit()
+    db.refresh(adj)
+    return adj
+
+
+@router.delete("/api/tournaments/{tournament_id}/adjustments/{adjustment_id}")
+def delete_adjustment(tournament_id: int, adjustment_id: int, db: DBSession = Depends(get_db)):
+    adj = db.get(TournamentAdjustment, adjustment_id)
+    if not adj or adj.tournament_id != tournament_id:
+        raise HTTPException(404, "Ajuste não encontrado")
+    db.delete(adj)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/api/tournaments/{tournament_id}/standings")

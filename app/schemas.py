@@ -108,3 +108,9 @@ class DrawRequest(BaseModel):
 
 class WalkoverRequest(BaseModel):
     present: str  # the team that showed up and wins: "a" or "b"
+
+
+class AdjustmentCreate(BaseModel):
+    team_id: int
+    points: int
+    reason: str

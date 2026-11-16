@@ -172,3 +172,28 @@ def test_top_four_of_the_complete_table_qualify():
     # picked arbitrarily, so the cut is left to the organization
     assert qualified == []
     assert [r["tied"] for r in table["rows"]][-3:-1] == [True, True]
+
+
+def test_point_adjustments_show_in_the_standings_and_can_be_removed():
+    import pytest
+    from fastapi import HTTPException
+    from app.schemas import AdjustmentCreate
+    from app.tournament_matches import create_adjustment, list_adjustments, delete_adjustment
+
+    db = make_db()
+    t, (team_a, team_b) = make_tournament_and_teams(db)
+    make_finished_match(db, t.id, team_a.id, team_b.id, [(21, 10), (21, 12)])
+
+    adj = create_adjustment(t.id, AdjustmentCreate(team_id=team_a.id, points=-1, reason="Faltou à abertura"), db)
+    by_team = {row["team"]: row for row in standings_rows(t.id, db)}
+    assert (by_team["A"]["tournament_points"], by_team["A"]["adjustment"]) == (2, -1)
+    assert [(a["team"], a["points"], a["reason"]) for a in list_adjustments(t.id, db)] == [("A", -1, "Faltou à abertura")]
+
+    delete_adjustment(t.id, adj.id, db)
+    assert standings_rows(t.id, db)[0]["tournament_points"] == 3
+    assert list_adjustments(t.id, db) == []
+
+    for bad in (dict(points=0, reason="x"), dict(points=-1, reason="  ")):
+        with pytest.raises(HTTPException) as exc_info:
+            create_adjustment(t.id, AdjustmentCreate(team_id=team_a.id, **bad), db)
+        assert exc_info.value.status_code == 400
