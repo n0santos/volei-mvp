@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import database
 from app.database import Base
-from app.models import Tournament, Team, TournamentSetResult
+from app.models import Tournament, Team, TournamentMatch, TournamentSetResult
 from app.schemas import (
     TournamentMatchCreate, TournamentMatchUpdate,
     GenerateSemifinalsRequest, GenerateFinalRequest, DrawRequest,
@@ -295,3 +295,41 @@ def test_migration_backfills_stage_from_is_final(tmp_path, monkeypatch):
     with old_engine.connect() as conn:
         rows = conn.exec_driver_sql("SELECT id, stage FROM tournament_matches ORDER BY id").all()
     assert rows == [(1, "grupos"), (2, "final")]
+
+
+def test_regenerating_the_final_refreshes_an_unplayed_third_place_game():
+    db = make_db()
+    t, teams = build_finished_table(db)
+    sf1, sf2 = generate_semifinals(t.id, SEMIS, db)
+    decide(db, sf1, winner="A")
+    decide(db, sf2, winner="A")
+    final = generate_final(t.id, FINAL_AND_THIRD, db)
+
+    # Semifinal 1 was recorded the wrong way round: fix it, drop the final, redo it.
+    db.query(TournamentSetResult).filter_by(match_id=sf1.id).delete()
+    decide(db, sf1, winner="B")
+    db.delete(final)
+    db.commit()
+    generate_final(t.id, FINAL_AND_THIRD, db)
+
+    third = stage_match(db, t.id, "terceiro_lugar")
+    assert (third.team_a_id, third.team_b_id) == (sf1.team_a_id, sf2.team_b_id)
+    assert db.query(TournamentMatch).filter_by(tournament_id=t.id, stage="terceiro_lugar").count() == 1
+
+
+def test_a_third_place_game_with_a_score_is_left_alone():
+    db = make_db()
+    t, teams = build_finished_table(db)
+    sf1, sf2 = generate_semifinals(t.id, SEMIS, db)
+    decide(db, sf1, winner="A")
+    decide(db, sf2, winner="A")
+    final = generate_final(t.id, FINAL_AND_THIRD, db)
+    third = stage_match(db, t.id, "terceiro_lugar")
+    decide(db, third, winner="A")
+    before = (third.team_a_id, third.team_b_id)
+
+    db.delete(final)
+    db.commit()
+    generate_final(t.id, FINAL_AND_THIRD, db)
+
+    assert (third.team_a_id, third.team_b_id) == before

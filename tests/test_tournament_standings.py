@@ -197,3 +197,22 @@ def test_point_adjustments_show_in_the_standings_and_can_be_removed():
         with pytest.raises(HTTPException) as exc_info:
             create_adjustment(t.id, AdjustmentCreate(team_id=team_a.id, **bad), db)
         assert exc_info.value.status_code == 400
+
+
+def test_point_adjustments_are_locked_once_the_semifinals_exist():
+    import pytest
+    from fastapi import HTTPException
+    from app.schemas import AdjustmentCreate
+    from app.tournament_matches import create_adjustment, delete_adjustment
+
+    db = make_db()
+    t, (team_a, team_b) = make_tournament_and_teams(db)
+    adj = create_adjustment(t.id, AdjustmentCreate(team_id=team_a.id, points=-1, reason="Faltou à abertura"), db)
+    make_finished_match(db, t.id, team_a.id, team_b.id, [], stage="semifinal_1")
+
+    with pytest.raises(HTTPException) as exc_info:
+        create_adjustment(t.id, AdjustmentCreate(team_id=team_b.id, points=-3, reason="Conduta"), db)
+    assert exc_info.value.status_code == 409
+    with pytest.raises(HTTPException) as exc_info:
+        delete_adjustment(t.id, adj.id, db)
+    assert exc_info.value.status_code == 409

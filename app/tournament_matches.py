@@ -377,9 +377,25 @@ def list_adjustments(tournament_id: int, db: DBSession = Depends(get_db)):
     ]
 
 
+def check_adjustments_open(db, tournament_id):
+    # The semifinals were drawn from the table; changing it now would make
+    # the standings disagree with who actually plays them.
+    if stage_match(db, tournament_id, "semifinal_1") or stage_match(db, tournament_id, "semifinal_2"):
+        raise HTTPException(
+            409, "As semifinais já foram geradas: ajustes não podem mais mudar a classificação"
+        )
+
+
+def has_any_set(db, match_id):
+    return db.execute(
+        select(TournamentSetResult).where(TournamentSetResult.match_id == match_id)
+    ).first() is not None
+
+
 @router.post("/api/tournaments/{tournament_id}/adjustments")
 def create_adjustment(tournament_id: int, data: AdjustmentCreate, db: DBSession = Depends(get_db)):
     get_tournament(db, tournament_id)
+    check_adjustments_open(db, tournament_id)
     get_tournament_team(db, tournament_id, data.team_id)
     reason = data.reason.strip()
     if data.points == 0:
@@ -400,6 +416,7 @@ def delete_adjustment(tournament_id: int, adjustment_id: int, db: DBSession = De
     adj = db.get(TournamentAdjustment, adjustment_id)
     if not adj or adj.tournament_id != tournament_id:
         raise HTTPException(404, "Ajuste não encontrado")
+    check_adjustments_open(db, tournament_id)
     db.delete(adj)
     db.commit()
     return {"ok": True}
@@ -546,12 +563,20 @@ def generate_final(tournament_id: int, data: GenerateFinalRequest, db: DBSession
         scheduled_at=data.final_at, court=data.court, stage="final", is_final=True,
     )
     db.add(final)
-    # The 3rd-place game (semifinal losers) is created with the final when a time is given.
-    if data.third_place_at is not None and not stage_match(db, tournament_id, "terceiro_lugar"):
-        db.add(TournamentMatch(
-            tournament_id=tournament_id, team_a_id=losers[0], team_b_id=losers[1],
-            scheduled_at=data.third_place_at, court=data.court, stage="terceiro_lugar",
-        ))
+    # The 3rd-place game (semifinal losers) is created with the final when a
+    # time is given. If one already exists from an earlier final that was
+    # deleted (e.g. a semifinal got corrected), it is refreshed with the
+    # current losers - unless it has started, then it's left alone.
+    if data.third_place_at is not None:
+        third = stage_match(db, tournament_id, "terceiro_lugar")
+        if third is None:
+            db.add(TournamentMatch(
+                tournament_id=tournament_id, team_a_id=losers[0], team_b_id=losers[1],
+                scheduled_at=data.third_place_at, court=data.court, stage="terceiro_lugar",
+            ))
+        elif third.status == "agendado" and not has_any_set(db, third.id):
+            third.team_a_id, third.team_b_id = losers
+            third.scheduled_at = data.third_place_at
     db.commit()
     db.refresh(final)
     return final

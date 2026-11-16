@@ -531,6 +531,11 @@ async function loadStandings() {
 // Point adjustments: regulation penalties on the overall table (-1 for missing
 // the opening ceremony, -3 for faking an injury, -3 to -6 for misconduct).
 function renderAdjustments(adjustments) {
+  // Locked once the semifinals exist: they were drawn from this table.
+  const locked = lastMatches.some(m => m.stage === "semifinal_1" || m.stage === "semifinal_2");
+  $("adjustForm").classList.toggle("hidden", locked);
+  $("adjustLocked").classList.toggle("hidden", !locked);
+  $("adjustList").classList.toggle("locked", locked);
   populateTeamSelect($("adjustTeam"), lastTeams);
   $("adjustList").innerHTML = adjustments.length
     ? adjustments.map(a => `
