@@ -13,7 +13,7 @@ from .schemas import (
 )
 from .services.tournament_engine import (
     SET_TARGETS, DRAW_SLOTS, DRAW_FIXTURES, QUALIFIED,
-    is_set_over, match_result, compute_standings, mark_qualified,
+    is_set_over, match_result, compute_standings, mark_qualified, freeze_qualified,
 )
 from .tournament import get_tournament
 
@@ -377,15 +377,6 @@ def list_adjustments(tournament_id: int, db: DBSession = Depends(get_db)):
     ]
 
 
-def check_adjustments_open(db, tournament_id):
-    # The semifinals were drawn from the table; changing it now would make
-    # the standings disagree with who actually plays them.
-    if stage_match(db, tournament_id, "semifinal_1") or stage_match(db, tournament_id, "semifinal_2"):
-        raise HTTPException(
-            409, "As semifinais já foram geradas: ajustes não podem mais mudar a classificação"
-        )
-
-
 def has_any_set(db, match_id):
     return db.execute(
         select(TournamentSetResult).where(TournamentSetResult.match_id == match_id)
@@ -395,7 +386,6 @@ def has_any_set(db, match_id):
 @router.post("/api/tournaments/{tournament_id}/adjustments")
 def create_adjustment(tournament_id: int, data: AdjustmentCreate, db: DBSession = Depends(get_db)):
     get_tournament(db, tournament_id)
-    check_adjustments_open(db, tournament_id)
     get_tournament_team(db, tournament_id, data.team_id)
     reason = data.reason.strip()
     if data.points == 0:
@@ -416,7 +406,6 @@ def delete_adjustment(tournament_id: int, adjustment_id: int, db: DBSession = De
     adj = db.get(TournamentAdjustment, adjustment_id)
     if not adj or adj.tournament_id != tournament_id:
         raise HTTPException(404, "Ajuste não encontrado")
-    check_adjustments_open(db, tournament_id)
     db.delete(adj)
     db.commit()
     return {"ok": True}
@@ -430,7 +419,13 @@ def get_standings(tournament_id: int, db: DBSession = Depends(get_db)):
     ).scalars().all()
 
     rows, complete = qualifying_standings(db, tournament_id, teams)
-    if complete:
+    semis = [m for m in (stage_match(db, tournament_id, "semifinal_1"), stage_match(db, tournament_id, "semifinal_2")) if m]
+    if semis:
+        # The semifinals already fixed who qualified; adjustments made since
+        # can only reorder inside each group (5th/6th is what's still at stake).
+        codes = {team.id: team.code for team in teams}
+        freeze_qualified(rows, {codes.get(i) for m in semis for i in (m.team_a_id, m.team_b_id)})
+    elif complete:
         mark_qualified(rows, QUALIFIED)
     else:
         for row in rows:

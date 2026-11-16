@@ -548,7 +548,6 @@ body.torneio {
 .torneio .st-team .note.tie { color: var(--ball); }
 .torneio .st-team .note.adj { color: var(--mute); }
 .torneio .adjust-list { list-style: none; margin: 0; padding: 0; }
-.torneio .adjust-list.locked button { display: none; }
 .torneio .adjust-list li {
   display: grid;
   grid-template-columns: 2.5rem minmax(0, 1fr) auto;

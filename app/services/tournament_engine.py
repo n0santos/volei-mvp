@@ -154,6 +154,22 @@ def mark_qualified(standings, slots):
             s["qualified"] = True
 
 
+def freeze_qualified(standings, qualified):
+    """Once the semifinals exist, the teams in them are the qualified ones,
+    whatever the table says now (a penalty can land after the semis). Move
+    them to the top, keep the criteria order inside each group, and re-rank:
+    ranks and ties are only shared inside a group."""
+    top = [s for s in standings if s["team"] in qualified]
+    rest = [s for s in standings if s["team"] not in qualified]
+    for group, offset in ((top, 0), (rest, len(top))):
+        original = [s["rank"] for s in group]
+        for i, s in enumerate(group):
+            s["rank"] = group[i - 1]["rank"] if i > 0 and original[i] == original[i - 1] else offset + i + 1
+            s["tied"] = s["tied"] and original.count(original[i]) > 1
+            s["qualified"] = group is top
+    standings[:] = top + rest
+
+
 def compute_standings(matches, teams=(), adjustments=None):
     """`teams` lists names that must appear even with no match played (kept
     first-come order among equals). `adjustments` maps a team name to points

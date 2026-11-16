@@ -200,20 +200,57 @@ def test_point_adjustments_show_in_the_standings_and_can_be_removed():
         assert exc_info.value.status_code == 400
 
 
-def test_point_adjustments_are_locked_once_the_semifinals_exist():
-    import pytest
-    from fastapi import HTTPException
+def six_team_table_with_semis(db):
+    """Six teams; A-D in the semifinals (by hand), E and F out. Returns (t, teams by code)."""
+    t, teams = make_tournament_and_teams(db, codes=("A", "B", "C", "D", "E", "F"))
+    by_code = {team.code: team for team in teams}
+    win = [(21, 10), (21, 10)]
+    make_finished_match(db, t.id, by_code["A"].id, by_code["E"].id, win)
+    make_finished_match(db, t.id, by_code["B"].id, by_code["F"].id, win)
+    make_finished_match(db, t.id, by_code["C"].id, by_code["E"].id, win)
+    make_finished_match(db, t.id, by_code["D"].id, by_code["F"].id, win)
+    # E and F split their two games: both have 1 win; E has 4 pts (2-0 + 1-2), F 2 pts.
+    make_finished_match(db, t.id, by_code["E"].id, by_code["F"].id, win)
+    make_finished_match(db, t.id, by_code["F"].id, by_code["E"].id, [(21, 19), (19, 21), (18, 16)])
+    for stage, (a, b) in (("semifinal_1", ("A", "D")), ("semifinal_2", ("B", "C"))):
+        m = TournamentMatch(
+            tournament_id=t.id, team_a_id=by_code[a].id, team_b_id=by_code[b].id,
+            scheduled_at=datetime(2026, 11, 29, 13, 0), stage=stage,
+        )
+        db.add(m)
+    db.commit()
+    return t, by_code
+
+
+def test_a_penalty_after_the_semifinals_keeps_the_semifinalists_on_top():
+    from app.schemas import AdjustmentCreate
+    from app.tournament_matches import create_adjustment
+
+    db = make_db()
+    t, by_code = six_team_table_with_semis(db)
+    # D (3 pts) loses 6 after the semis: fewer points than E (2 pts), but D is
+    # in a semifinal, so it stays among the four qualified rows.
+    create_adjustment(t.id, AdjustmentCreate(team_id=by_code["D"].id, points=-6, reason="Conduta grave"), db)
+
+    rows = standings_rows(t.id, db)
+    assert {row["team"] for row in rows[:4]} == {"A", "B", "C", "D"}
+    assert all(row["qualified"] for row in rows[:4])
+    assert [row["team"] for row in rows[4:]] == ["E", "F"]
+    assert not any(row["qualified"] for row in rows[4:])
+    assert rows[3]["team"] == "D" and rows[3]["rank"] == 4
+    assert [row["rank"] for row in rows[4:]] == [5, 6]
+
+
+def test_a_penalty_after_the_semifinals_can_swap_fifth_and_sixth():
     from app.schemas import AdjustmentCreate
     from app.tournament_matches import create_adjustment, delete_adjustment
 
     db = make_db()
-    t, (team_a, team_b) = make_tournament_and_teams(db)
-    adj = create_adjustment(t.id, AdjustmentCreate(team_id=team_a.id, points=-1, reason="Faltou à abertura"), db)
-    make_finished_match(db, t.id, team_a.id, team_b.id, [], stage="semifinal_1")
+    t, by_code = six_team_table_with_semis(db)
+    assert [row["team"] for row in standings_rows(t.id, db)[4:]] == ["E", "F"]
 
-    with pytest.raises(HTTPException) as exc_info:
-        create_adjustment(t.id, AdjustmentCreate(team_id=team_b.id, points=-3, reason="Conduta"), db)
-    assert exc_info.value.status_code == 409
-    with pytest.raises(HTTPException) as exc_info:
-        delete_adjustment(t.id, adj.id, db)
-    assert exc_info.value.status_code == 409
+    adj = create_adjustment(t.id, AdjustmentCreate(team_id=by_code["E"].id, points=-3, reason="Simulação de lesão"), db)
+    assert [row["team"] for row in standings_rows(t.id, db)[4:]] == ["F", "E"]
+
+    delete_adjustment(t.id, adj.id, db)
+    assert [row["team"] for row in standings_rows(t.id, db)[4:]] == ["E", "F"]

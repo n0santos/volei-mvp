@@ -1,6 +1,6 @@
 import pytest
 from types import SimpleNamespace
-from app.services.tournament_engine import SET_TARGETS, is_set_over, set_winner, match_points, match_result, compute_standings, mark_qualified
+from app.services.tournament_engine import SET_TARGETS, is_set_over, set_winner, match_points, match_result, compute_standings, mark_qualified, freeze_qualified
 
 
 
@@ -350,3 +350,35 @@ def test_compute_standings_raises_on_unfinished_match():
     matches = [m("O", "P", [(18, 16)])]
     with pytest.raises(ValueError):
         compute_standings(matches)
+
+
+def test_freeze_qualified_moves_the_given_teams_up_and_reranks():
+    # By the table: W, X, Y, Z. The semifinal "qualified" set is {W, Z}.
+    standings = compute_standings([
+        m("W", "Q1", [(21, 0), (21, 0)]),
+        m("X", "Q2", [(21, 5), (21, 5)]),
+        m("Y", "Q3", [(21, 10), (21, 10)]),
+        m("Z", "Q4", [(21, 15), (21, 15)]),
+    ], teams=())
+    standings = [s for s in standings if s["team"] in {"W", "X", "Y", "Z"}]
+
+    freeze_qualified(standings, {"W", "Z"})
+
+    assert [(s["team"], s["rank"], s["qualified"]) for s in standings] == [
+        ("W", 1, True), ("Z", 2, True), ("X", 3, False), ("Y", 4, False),
+    ]
+
+
+def test_freeze_qualified_keeps_a_tie_only_inside_one_group():
+    # K and L tie (same ratios, no head-to-head); only K is qualified, so
+    # after the split neither is flagged tied any more.
+    standings = compute_standings([
+        m("K", "V3", [(21, 10), (21, 10)]),
+        m("L", "V4", [(21, 10), (21, 10)]),
+    ])
+    standings = [s for s in standings if s["team"] in {"K", "L"}]
+    assert standings[0]["tied"] and standings[1]["tied"]
+
+    freeze_qualified(standings, {"L"})
+
+    assert [(s["team"], s["rank"], s["tied"]) for s in standings] == [("L", 1, False), ("K", 2, False)]
