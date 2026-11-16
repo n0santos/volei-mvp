@@ -15,17 +15,18 @@ from app.schemas import (
 from app.services.tournament_engine import DRAW_FIXTURES
 from app.tournament_matches import (
     create_match, update_match, get_standings, register_draw,
-    generate_semifinals, generate_final, get_podium,
+    generate_semifinals, generate_final, get_podium, stage_match,
 )
 
 WHEN = datetime(2026, 11, 29, 9, 0)
 SEMIS = GenerateSemifinalsRequest(semifinal_1_at=WHEN, semifinal_2_at=WHEN)
 FINAL = GenerateFinalRequest(final_at=WHEN)
+FINAL_AND_THIRD = GenerateFinalRequest(final_at=WHEN, third_place_at=WHEN)
 TIMES = [datetime(2026, 11, 28, 13, 0) + timedelta(minutes=50 * i) for i in range(len(DRAW_FIXTURES))]
 
 # Winners (side A/B) of the nine games in fixture order. Wins per slot A..F =
 # 2,2,2,2,1,0: a clean cut between 4th and 5th place.
-FOUR_QUALIFY = "AAAAAABAA"
+FOUR_QUALIFY = "ABAAAAABA"
 
 
 def make_db():
@@ -146,7 +147,7 @@ def test_final_needs_both_semifinals_decided():
     assert exc_info.value.status_code == 400
 
 
-def test_final_pairs_the_semifinal_winners_and_there_is_no_third_place_game():
+def test_final_pairs_the_semifinal_winners():
     db = make_db()
     t, teams = build_finished_table(db)
     sf1, sf2 = generate_semifinals(t.id, SEMIS, db)
@@ -157,6 +158,21 @@ def test_final_pairs_the_semifinal_winners_and_there_is_no_third_place_game():
 
     assert final.stage == "final" and final.is_final is True
     assert (final.team_a_id, final.team_b_id) == (sf1.team_a_id, sf2.team_b_id)
+    assert stage_match(db, t.id, "terceiro_lugar") is None
+
+
+def test_third_place_game_pairs_the_semifinal_losers():
+    db = make_db()
+    t, teams = build_finished_table(db)
+    sf1, sf2 = generate_semifinals(t.id, SEMIS, db)
+    decide(db, sf1, winner="A")
+    decide(db, sf2, winner="B")
+
+    generate_final(t.id, FINAL_AND_THIRD, db)
+
+    third = stage_match(db, t.id, "terceiro_lugar")
+    assert (third.team_a_id, third.team_b_id) == (sf1.team_b_id, sf2.team_a_id)
+    assert third.is_final is False
 
 
 def test_final_rejects_when_it_already_exists():
@@ -175,25 +191,52 @@ def test_final_rejects_when_it_already_exists():
 def test_podium_fills_in_as_the_final_gets_decided():
     db = make_db()
     t, teams = build_finished_table(db)
-    assert get_podium(t.id, db) == {"champion": None, "runner_up": None}
+    assert get_podium(t.id, db) == {"champion": None, "runner_up": None, "third": None}
 
     sf1, sf2 = generate_semifinals(t.id, SEMIS, db)
     decide(db, sf1, winner="A")
     decide(db, sf2, winner="B")
     final = generate_final(t.id, FINAL, db)
-    assert get_podium(t.id, db) == {"champion": None, "runner_up": None}
+    assert get_podium(t.id, db) == {"champion": None, "runner_up": None, "third": None}
 
     decide(db, final, winner="B")
     assert get_podium(t.id, db) == {
         "champion": code_of(teams, sf2.team_b_id),
         "runner_up": code_of(teams, sf1.team_a_id),
+        "third": None,
     }
+
+
+def test_podium_third_place_comes_from_the_third_place_game():
+    db = make_db()
+    t, teams = build_finished_table(db)
+    sf1, sf2 = generate_semifinals(t.id, SEMIS, db)
+    decide(db, sf1, winner="A")
+    decide(db, sf2, winner="B")
+    generate_final(t.id, FINAL_AND_THIRD, db)
+
+    decide(db, stage_match(db, t.id, "terceiro_lugar"), winner="B")
+    assert get_podium(t.id, db)["third"] == code_of(teams, sf2.team_a_id)
+
+
+def test_third_place_game_can_be_created_by_hand_only_once():
+    db = make_db()
+    t, teams = make_six(db)
+    data = TournamentMatchCreate(
+        team_a_id=teams[0].id, team_b_id=teams[1].id, scheduled_at=WHEN, stage="terceiro_lugar"
+    )
+    m = create_match(t.id, data, db)
+    assert (m.stage, m.is_final) == ("terceiro_lugar", False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        create_match(t.id, data, db)
+    assert exc_info.value.status_code == 409
 
 
 def test_create_match_rejects_unknown_stage():
     db = make_db()
     t, teams = make_six(db)
-    for stage in ("quartas", "terceiro_lugar"):
+    for stage in ("quartas", "oitavas"):
         with pytest.raises(HTTPException) as exc_info:
             create_match(
                 t.id,

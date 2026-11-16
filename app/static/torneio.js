@@ -315,11 +315,12 @@ const STAGE_LABELS = {
   grupos: "Classificatória",
   semifinal_1: "Semifinal 1",
   semifinal_2: "Semifinal 2",
+  terceiro_lugar: "3º lugar",
   final: "Final",
 };
 
 const STATUS_LABELS = { agendado: "Agendado", em_andamento: "Em andamento", encerrado: "Encerrado" };
-const STAGE_ORDER = { semifinal_1: 1, semifinal_2: 1, final: 2 };
+const STAGE_ORDER = { semifinal_1: 1, semifinal_2: 1, terceiro_lugar: 2, final: 2 };
 
 let lastMatches = [];
 let matchesLoaded = false; // the draw panel waits for this so it doesn't flash on a tournament that already has games
@@ -548,7 +549,7 @@ function updateKnockoutForms() {
   $("generateFinalForm").classList.toggle("hidden", finalExists);
   $("finalBtn").disabled = !finalReady;
   $("finalHint").textContent = finalReady
-    ? `As semifinais terminaram. Confirme o horário da final${when}.`
+    ? `As semifinais terminaram. Confirme os horários do 3º lugar e da final${when}.`
     : "Disponível quando as duas semifinais terminarem.";
 }
 
@@ -557,6 +558,7 @@ async function loadPodium() {
   const places = [
     ["1º", "Campeã", podium.champion, "gold"],
     ["2º", "Vice-campeã", podium.runner_up, "silver"],
+    ["3º", "Terceira colocada", podium.third, "bronze"],
   ].filter(([, , team]) => team);
   $("podiumSection").classList.toggle("hidden", places.length === 0);
   $("podiumBody").innerHTML = places.map(([n, label, team, tone]) => `
@@ -598,6 +600,7 @@ $("generateFinalForm").addEventListener("submit", async e => {
       method: "POST",
       body: JSON.stringify({
         final_at: `${lastDay()}T${$("finalAt").value}`,
+        third_place_at: `${lastDay()}T${$("thirdAt").value}`,
       }),
     });
     e.target.reset();
@@ -656,9 +659,9 @@ function renderStandings(table) {
 // created from the fixed table. The panel disappears once everyone is in one table.
 const DRAW_SLOTS = ["A", "B", "C", "D", "E", "F"];
 const DRAW_FIXTURES = [
-  ["A", "B"], ["C", "D"], ["E", "F"],
-  ["A", "C"], ["B", "E"], ["D", "F"],
-  ["A", "D"], ["B", "F"], ["C", "E"],
+  ["B", "C"], ["B", "A"], ["D", "E"],
+  ["A", "F"], ["D", "F"], ["C", "E"],
+  ["E", "F"], ["D", "B"], ["C", "A"],
 ];
 const DRAW_FIRST_GAME = 13 * 60; // 13:00, then one game every 50 min until told otherwise
 const DRAW_GAME_MINUTES = 50;

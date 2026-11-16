@@ -3,10 +3,11 @@ SET_TARGETS = {1: 21, 2: 21, 3: 18}
 # One overall table of 6 teams, 3 games each: the draw assigns the teams to
 # slots A-F, and these 9 pairings are played in this order.
 DRAW_SLOTS = ("A", "B", "C", "D", "E", "F")
+# Regulation's final version: game 1 on Friday, 2-6 on Saturday, 7-9 on Sunday.
 DRAW_FIXTURES = (
-    ("A", "B"), ("C", "D"), ("E", "F"),
-    ("A", "C"), ("B", "E"), ("D", "F"),
-    ("A", "D"), ("B", "F"), ("C", "E"),
+    ("B", "C"), ("B", "A"), ("D", "E"),
+    ("A", "F"), ("D", "F"), ("C", "E"),
+    ("E", "F"), ("D", "B"), ("C", "A"),
 )
 QUALIFIED = 4  # the top 4 go to the semifinals
 

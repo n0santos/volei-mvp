@@ -97,6 +97,7 @@ class GenerateSemifinalsRequest(BaseModel):
 
 class GenerateFinalRequest(BaseModel):
     final_at: datetime
+    third_place_at: datetime | None = None
     court: str | None = None
 
 

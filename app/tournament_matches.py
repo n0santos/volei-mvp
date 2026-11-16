@@ -21,11 +21,11 @@ router = APIRouter()
 MATCH_STATUSES = {"agendado", "em_andamento", "encerrado"}
 
 # "grupos" is the qualifying round (all teams in one table); the name is kept because it is stored in existing rows.
-STAGES = {"grupos", "semifinal_1", "semifinal_2", "final"}
+STAGES = {"grupos", "semifinal_1", "semifinal_2", "terceiro_lugar", "final"}
 # Knockout stages happen once per tournament; qualifying games repeat.
 KNOCKOUT_STAGES = STAGES - {"grupos"}
 # Position in the tournament: a stage can't be undone once a later one exists.
-STAGE_ORDER = {"grupos": 0, "semifinal_1": 1, "semifinal_2": 1, "final": 2}
+STAGE_ORDER = {"grupos": 0, "semifinal_1": 1, "semifinal_2": 1, "terceiro_lugar": 2, "final": 2}
 
 WALKOVER_POINTS = 15  # regulation: a W.O. is 2x0 with partials of 15x0 and 15x0
 
@@ -477,19 +477,26 @@ def generate_final(tournament_id: int, data: GenerateFinalRequest, db: DBSession
     if stage_match(db, tournament_id, "final"):
         raise HTTPException(409, "A final já foi cadastrada")
 
-    winners = []
+    winners, losers = [], []
     for stage in ("semifinal_1", "semifinal_2"):
         m = stage_match(db, tournament_id, stage)
         outcome = winner_and_loser(db, m) if m else None
         if outcome is None:
             raise HTTPException(400, "As duas semifinais precisam estar decididas")
         winners.append(outcome[0])
+        losers.append(outcome[1])
 
     final = TournamentMatch(
         tournament_id=tournament_id, team_a_id=winners[0], team_b_id=winners[1],
         scheduled_at=data.final_at, court=data.court, stage="final", is_final=True,
     )
     db.add(final)
+    # The 3rd-place game (semifinal losers) is created with the final when a time is given.
+    if data.third_place_at is not None and not stage_match(db, tournament_id, "terceiro_lugar"):
+        db.add(TournamentMatch(
+            tournament_id=tournament_id, team_a_id=losers[0], team_b_id=losers[1],
+            scheduled_at=data.third_place_at, court=data.court, stage="terceiro_lugar",
+        ))
     db.commit()
     db.refresh(final)
     return final
@@ -505,7 +512,10 @@ def get_podium(tournament_id: int, db: DBSession = Depends(get_db)):
 
     final = stage_match(db, tournament_id, "final")
     outcome = winner_and_loser(db, final) if final else None
+    third_game = stage_match(db, tournament_id, "terceiro_lugar")
+    third = winner_and_loser(db, third_game) if third_game else None
     return {
         "champion": codes.get(outcome[0]) if outcome else None,
         "runner_up": codes.get(outcome[1]) if outcome else None,
+        "third": codes.get(third[0]) if third else None,
     }
