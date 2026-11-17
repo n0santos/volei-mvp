@@ -210,44 +210,46 @@ def session_state(session_id: int, db: DBSession = Depends(get_db)):
         select(Match).where(Match.session_id == session_id).order_by(Match.number.desc())
     ).scalars().all()
 
+    # The open match, if any - not just the latest one, so a match that blocks
+    # the next draft is never hidden from the screen.
+    open_match = next((m for m in matches if m.status in ("proposed", "running")), None)
     current = None
-    if matches:
-        m = matches[0]
-        if m.status in ("proposed", "running"):
-            mps = db.execute(
-                select(MatchPlayer, Player)
-                .join(Player, Player.id == MatchPlayer.player_id)
-                .where(MatchPlayer.match_id == m.id)
-            ).all()
-            current = {
-                "id": m.id,
-                "number": m.number,
-                "status": m.status,
-                "opponent": m.opponent,
-                "started_at": m.started_at.isoformat() if m.started_at else None,
-                "teams": {"A": [], "B": []},
-            }
-            for mp, p in mps:
-                if mp.role == "released":
-                    continue  # a fill-in the opponent no longer needs
-                current["teams"][mp.team].append({
-                    "id": p.id,
-                    "name": p.name,
-                    "score": p.score,
-                    "gender": p.gender,
-                    "role": mp.role,
-                    "exited": mp.exited_at is not None,
-                })
-            if m.opponent:
-                opp_avg = opponent_average(db, m.opponent)
-                if opp_avg is not None:
-                    fill = [p for mp, p in mps if mp.team == "B" and mp.role != "released"]
-                    ours = [p for mp, p in mps if mp.team == "A"]
-                    # same maths as the draft: the rest of their side plays at the roster average
-                    current["balance"] = {
-                        "ours_avg": sum(effective_score(p) for p in ours) / TEAM_SIZE,
-                        "opponent_avg": (opp_avg * (TEAM_SIZE - len(fill)) + sum(effective_score(p) for p in fill)) / TEAM_SIZE,
-                    }
+    if open_match:
+        m = open_match
+        mps = db.execute(
+            select(MatchPlayer, Player)
+            .join(Player, Player.id == MatchPlayer.player_id)
+            .where(MatchPlayer.match_id == m.id)
+        ).all()
+        current = {
+            "id": m.id,
+            "number": m.number,
+            "status": m.status,
+            "opponent": m.opponent,
+            "started_at": m.started_at.isoformat() if m.started_at else None,
+            "teams": {"A": [], "B": []},
+        }
+        for mp, p in mps:
+            if mp.role == "released":
+                continue  # a fill-in the opponent no longer needs
+            current["teams"][mp.team].append({
+                "id": p.id,
+                "name": p.name,
+                "score": p.score,
+                "gender": p.gender,
+                "role": mp.role,
+                "exited": mp.exited_at is not None,
+            })
+        if m.opponent:
+            opp_avg = opponent_average(db, m.opponent)
+            if opp_avg is not None:
+                fill = [p for mp, p in mps if mp.team == "B" and mp.role != "released"]
+                ours = [p for mp, p in mps if mp.team == "A"]
+                # same maths as the draft: the rest of their side plays at the roster average
+                current["balance"] = {
+                    "ours_avg": sum(effective_score(p) for p in ours) / TEAM_SIZE,
+                    "opponent_avg": (opp_avg * (TEAM_SIZE - len(fill)) + sum(effective_score(p) for p in fill)) / TEAM_SIZE,
+                }
 
     return {
         "session": {
@@ -441,6 +443,9 @@ async def start_match(match_id: int, db: DBSession = Depends(get_db)):
     m = db.get(Match, match_id)
     if not m:
         raise HTTPException(404, "Partida não encontrada")
+    if m.status != "proposed":
+        # A stale screen or a double tap must never reopen a finished match.
+        raise HTTPException(409, f"A partida {m.number} já {'terminou' if m.status == 'finished' else 'começou'}")
     now = datetime.utcnow()
     m.status = "running"
     m.started_at = now
@@ -670,6 +675,8 @@ async def finish_match(match_id: int, db: DBSession = Depends(get_db), data: Fin
     m = db.get(Match, match_id)
     if not m:
         raise HTTPException(404, "Partida não encontrada")
+    if m.status != "running":
+        raise HTTPException(409, f"A partida {m.number} {'já terminou' if m.status == 'finished' else 'ainda não começou'}")
     now = datetime.utcnow()
     m.status = "finished"
     m.ended_at = now

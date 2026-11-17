@@ -521,8 +521,8 @@ $("startMatch").onclick = () => {
   const m = state.current_match;
   if (!m) return;
   busy([$("startMatch")], "Iniciando…", async () => {
-    await api(`/api/matches/${m.id}/start`, {method:"POST"});
-    await refresh();
+    // A refused start means this screen is out of date: refresh it either way.
+    try { await api(`/api/matches/${m.id}/start`, {method:"POST"}); } finally { await refresh(); }
     toast(`Partida ${m.number} começou`);
   });
 };
@@ -534,8 +534,7 @@ document.querySelectorAll(".finishMatch").forEach(btn => btn.onclick = async () 
   const label = !winner ? "sem vencedor" : `com vitória de: ${btn.textContent.replace("🏆 ", "").replace(" venceu", "")}`;
   if (!confirm(`Encerrar a partida ${label}?`)) return;
   busy([btn], "Encerrando…", async () => {
-    await api(`/api/matches/${m.id}/finish`, {method:"POST", body:JSON.stringify({winner})});
-    await refresh();
+    try { await api(`/api/matches/${m.id}/finish`, {method:"POST", body:JSON.stringify({winner})}); } finally { await refresh(); }
     toast(`Partida ${m.number} encerrada`);
   });
 });
