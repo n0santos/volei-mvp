@@ -193,7 +193,10 @@ body[data-tab="equipes"] .tab-pane:not([data-pane="equipes"]) { display:none; }
 }
 
 .scoreboard { display:flex; flex-direction:column; gap:16px; align-items:center; text-align:center; }
-.score-row { display:flex; align-items:center; justify-content:center; gap:32px; flex-wrap:wrap; position:relative; }
+/* Two equal halves, so the net (left: 50%) sits between the teams whatever
+   the length of their names - without the referee's +1/-1 buttons the sides
+   would otherwise be as wide as their labels and the net would drift. */
+.score-row { display:grid; grid-template-columns: 1fr 1fr; align-items:start; gap:32px; width:100%; max-width:560px; position:relative; }
 /* same net motif that splits the two teams elsewhere in the app */
 .score-row::after {
   content: "";
@@ -206,7 +209,8 @@ body[data-tab="equipes"] .tab-pane:not([data-pane="equipes"]) { display:none; }
     repeating-linear-gradient(-45deg, var(--border) 0 1px, transparent 1px 8px);
   pointer-events: none;
 }
-.score-side { display:flex; flex-direction:column; align-items:center; gap:10px; }
+.score-side { display:flex; flex-direction:column; align-items:center; gap:10px; min-width:0; }
+.score-side > .muted { min-height: 2.6em; display:flex; align-items:flex-end; justify-content:center; overflow-wrap:anywhere; }
 .score-value { font-family: var(--font-display); font-size: 64px; font-weight:700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .score-btn { font-size: 26px; padding: 16px 26px; min-width: 64px; }
 .sets-history { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
