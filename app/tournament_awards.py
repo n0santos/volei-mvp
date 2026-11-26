@@ -12,15 +12,16 @@ from .tournament import get_tournament
 
 router = APIRouter()
 
+# Titles and descriptions as in section 13 of the final regulation (26/11).
 AWARDS = (
     {"key": "mvp_m", "gender": "M", "title": "Melhor Jogador (MVP Masculino)",
-     "description": "Decisivo em cada ponto. O craque que fez a diferença no torneio."},
+     "description": "Talento, visão de jogo e liderança. O grande destaque masculino em quadra."},
     {"key": "mvp_f", "gender": "F", "title": "Melhor Jogadora (MVP Feminino)",
-     "description": "Talento, visão de jogo e liderança. O grande destaque feminino da quadra."},
+     "description": "Decisiva em cada ponto. A craque que fez a diferença no torneio."},
     {"key": "raca_m", "gender": "M", "title": "Prêmio Raça, Paixão e Espírito Esportivo (Masculino)",
      "description": "O coração do time em quadra. Exemplo de garra, alegria e espírito esportivo."},
     {"key": "raca_f", "gender": "F", "title": "Prêmio Raça, Paixão e Espírito Esportivo (Feminino)",
-     "description": "Jogar com alma transforma o jogo. Obrigado por elevar a energia do torneio!"},
+     "description": "Pela entrega total, respeito e paixão pelo vôlei. Obrigado por elevar a energia do torneio!"},
 )
 AWARD_KEYS = {a["key"]: a for a in AWARDS}
 
