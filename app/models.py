@@ -157,3 +157,15 @@ class TournamentAdjustment(Base):
     points: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TournamentAward(Base):
+    """Individual award winner picked by the organizing committee. The awards
+    themselves (titles, descriptions) are fixed in tournament_awards.AWARDS."""
+    __tablename__ = "tournament_awards"
+    __table_args__ = (UniqueConstraint("tournament_id", "award_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"))
+    award_key: Mapped[str] = mapped_column(String(40))
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"))

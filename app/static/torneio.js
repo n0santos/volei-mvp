@@ -100,6 +100,7 @@ async function loadActiveTournament() {
     await loadMatches();
     await loadStandings();
     await loadPodium();
+    await loadAwards();
   } else {
     tournamentId = null;
     $("tournamentName").textContent = "Nenhum torneio ativo";
@@ -617,6 +618,60 @@ async function loadPodium() {
   `).join("");
 }
 
+// Individual awards: the committee decides, a referee records it here.
+let awardsKey = null;
+
+async function loadAwards() {
+  const awards = await api(`/api/tournaments/${tournamentId}/awards`);
+  // Skip re-rendering when nothing changed, so an open select isn't reset by the poll.
+  const key = JSON.stringify([awards, lastTeams.map(t => [t.code, t.players.map(p => p.id)])]);
+  if (key === awardsKey) return;
+  awardsKey = key;
+  $("awardsBody").innerHTML = awards.map(renderAward).join("");
+}
+
+function renderAward(a) {
+  const w = a.winner;
+  const athletes = lastTeams
+    .flatMap(t => t.players.filter(p => p.gender === a.gender).map(p => ({ ...p, team: t.code })))
+    .sort((x, y) => x.name.localeCompare(y.name));
+  const options = athletes
+    .map(p => `<option value="${p.id}"${w && w.player_id === p.id ? " selected" : ""}>${esc(p.name)} (${esc(p.team)})</option>`)
+    .join("");
+  return `
+    <li class="award${w ? " decided" : ""}">
+      <div class="award-title">${esc(a.title)}</div>
+      <div class="award-desc">${esc(a.description)}</div>
+      <div class="award-winner">
+        ${w
+          ? `${w.team ? mascot(w.team, "sm") : ""}<strong>${esc(w.name)}</strong>${w.team ? `<span class="muted">${esc(w.team)}</span>` : ""}`
+          : '<span class="muted">A definir</span>'}
+      </div>
+      <label class="edit-only award-pick">Vencedor
+        <select data-award="${a.key}">
+          <option value="">A definir</option>
+          ${options}
+        </select>
+      </label>
+    </li>`;
+}
+
+$("awardsBody").addEventListener("change", async e => {
+  const select = e.target.closest("select[data-award]");
+  if (!select) return;
+  try {
+    await api(`/api/tournaments/${tournamentId}/awards/${select.dataset.award}`, {
+      method: "PUT",
+      body: JSON.stringify({ player_id: select.value ? Number(select.value) : null }),
+    });
+    toast(select.value ? "Vencedor registrado" : "Prêmio voltou para “a definir”");
+  } catch (err) {
+    toast(err.message);
+  }
+  awardsKey = null;
+  await loadAwards();
+});
+
 $("generateSemisForm").addEventListener("submit", async e => {
   e.preventDefault();
   const btn = e.target.querySelector("button");
@@ -796,6 +851,7 @@ setInterval(() => {
   loadMatches().catch(err => toast(err.message));
   loadStandings().catch(err => toast(err.message));
   loadPodium().catch(err => toast(err.message));
+  loadAwards().catch(err => toast(err.message));
 }, 8000);
 
 loadActiveTournament().catch(err => toast(err.message));

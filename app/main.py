@@ -21,6 +21,7 @@ from .services.export import history_rows, history_csv
 from .tournament import router as tournament_router
 from .tournament_matches import router as tournament_matches_router
 from .arbitro import router as arbitro_router, referee_guard
+from .tournament_awards import router as tournament_awards_router
 
 TEAM_SIZE = 6  # players per side
 
@@ -32,6 +33,7 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 app.include_router(tournament_router)
 app.include_router(tournament_matches_router)
 app.include_router(arbitro_router)
+app.include_router(tournament_awards_router)
 app.middleware("http")(referee_guard)
 
 
