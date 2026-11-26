@@ -150,7 +150,7 @@ function renderTeam(team) {
             <div class="tc-count${full ? " full" : ""}">${team.players.length} de ${team.max_players} atletas</div>
           </div>
         </div>
-        <details class="more">
+        <details class="more edit-only">
           <summary class="btn sm" aria-label="Ajustes da equipe">Ajustes</summary>
           <div class="more-menu">
             <label class="tournament-label">Nome
@@ -168,7 +168,7 @@ function renderTeam(team) {
       <ul class="tp-list">
         ${players.map(p => renderPlayer(team.id, p)).join("") || '<li class="tp-empty">Nenhum atleta ainda.</li>'}
       </ul>
-      <form class="inline add-player-form" data-team-id="${team.id}">
+      <form class="inline add-player-form edit-only" data-team-id="${team.id}">
         <input placeholder="Nome do atleta" class="player-search" required>
         <button class="primary">Adicionar</button>
       </form>
@@ -184,7 +184,7 @@ function renderPlayer(teamId, p) {
       <span class="tp-name">${esc(p.name)}</span>
       ${p.is_captain ? `<span class="chip captain">${captainLabel}</span>` : ""}
       ${p.role === "reserva" ? '<span class="chip">Reserva</span>' : ""}
-      <details class="more">
+      <details class="more edit-only">
         <summary class="btn sm" aria-label="Ações de ${esc(p.name)}">Mais</summary>
         <div class="more-menu">
           <button data-action="set-captain" data-captain="${p.is_captain ? "0" : "1"}" ${attrs}>${p.is_captain ? `Remover ${captainLabel.toLowerCase()}` : `Tornar ${captainLabel.toLowerCase()}`}</button>
@@ -401,8 +401,8 @@ function renderFixture(m, isNext, showDay) {
       </div>
       <div class="fx-actions">
         <a class="btn${m.status === "em_andamento" ? " primary" : ""}" href="/torneio/partidas/${m.id}">Placar</a>
-        ${m.status === "agendado" ? `<button data-action="start" data-match-id="${m.id}">Iniciar</button>` : ""}
-        <details class="more">
+        ${m.status === "agendado" ? `<button class="edit-only" data-action="start" data-match-id="${m.id}">Iniciar</button>` : ""}
+        <details class="more edit-only">
           <summary class="btn" aria-label="Mais ações do jogo">Mais</summary>
           <div class="more-menu">
             ${m.status !== "encerrado" ? `
@@ -534,7 +534,7 @@ function renderAdjustments(adjustments) {
         <li>
           <strong>${fmtSigned(a.points)}</strong>
           <span>${esc(a.team)} — ${esc(a.reason)}</span>
-          <button type="button" data-adjust-id="${a.id}">Remover</button>
+          <button type="button" class="edit-only" data-adjust-id="${a.id}">Remover</button>
         </li>`).join("")
     : '<li class="muted">Nenhum ajuste.</li>';
 }

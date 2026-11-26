@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<body class="viewer">
 <header class="site-header">
   <div class="inner">
     <div>
@@ -31,7 +31,7 @@
         <div class="score-side">
           <div id="teamALabel" class="muted"></div>
           <div id="scoreA" class="score-value">0</div>
-          <div class="inline">
+          <div class="inline edit-only">
             <button class="score-btn" data-team="a" data-delta="-1">-1</button>
             <button class="primary score-btn" data-team="a" data-delta="1">+1</button>
           </div>
@@ -39,18 +39,19 @@
         <div class="score-side">
           <div id="teamBLabel" class="muted"></div>
           <div id="scoreB" class="score-value">0</div>
-          <div class="inline">
+          <div class="inline edit-only">
             <button class="score-btn" data-team="b" data-delta="-1">-1</button>
             <button class="primary score-btn" data-team="b" data-delta="1">+1</button>
           </div>
         </div>
       </div>
-      <button id="closeSetBtn" class="primary" disabled>Fechar set</button>
+      <button id="closeSetBtn" class="primary edit-only" disabled>Fechar set</button>
       <div id="resultBanner" class="muted hidden"></div>
     </section>
   </main>
 </div>
 <div id="toast"></div>
+<script src="/static/arbitro.js"></script>
 <script src="/static/partida.js"></script>
 </body>
 </html>

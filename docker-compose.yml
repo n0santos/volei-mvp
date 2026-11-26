@@ -7,4 +7,6 @@ services:
       - ./data:/data
     environment:
       - DB_PATH=/data/volei.db
+      # senha dos árbitros do torneio; fica no .env da VM (fora do git)
+      - ARBITRO_SENHA=${ARBITRO_SENHA:-}
     restart: unless-stopped

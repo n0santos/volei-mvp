@@ -145,6 +145,8 @@ button.danger { background: var(--danger); color: white; border-color: var(--dan
 .total { font-family: var(--font-display); font-weight:700; margin-top:10px; font-variant-numeric: tabular-nums; }
 
 .hidden { display:none !important; }
+/* Sem login de árbitro a página é só de leitura (ver static/arbitro.js) */
+body.viewer .edit-only { display:none !important; }
 
 /* Tournament page tabs: the active tab is body[data-tab]. Panes only get
    hidden here - showing is left to .hidden, which tracks whether a

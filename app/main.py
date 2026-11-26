@@ -20,6 +20,7 @@ from .services.fairness import history
 from .services.export import history_rows, history_csv
 from .tournament import router as tournament_router
 from .tournament_matches import router as tournament_matches_router
+from .arbitro import router as arbitro_router, referee_guard
 
 TEAM_SIZE = 6  # players per side
 
@@ -30,6 +31,8 @@ app = FastAPI(title="Vôlei MVP")
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 app.include_router(tournament_router)
 app.include_router(tournament_matches_router)
+app.include_router(arbitro_router)
+app.middleware("http")(referee_guard)
 
 
 @app.middleware("http")
